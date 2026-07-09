@@ -1,0 +1,5 @@
+# beans-xml is a byte-span parser with a byte-exact conformance corpus
+# (fixtures/*.xml paired with expected.json spans). Any EOL conversion on
+# checkout shifts every span and breaks conformance on Windows (CRLF).
+# Disable all text detection/conversion — checkouts are byte-exact everywhere.
+* -text
