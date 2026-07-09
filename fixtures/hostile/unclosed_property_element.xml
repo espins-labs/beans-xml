@@ -1,0 +1,1 @@
+<beans><bean id="widgetService" class="com.example.WidgetService"><property name="label" value="hello"></bean></beans>

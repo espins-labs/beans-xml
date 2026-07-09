@@ -1,0 +1,8 @@
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:aop="http://www.springframework.org/schema/aop">
+  <bean id="svcB" class="com.example.ServiceA">
+    <property name="helper"><bean class="com.example.Helper"/></property>
+    <property name="widgetFactory" ref="&amp;widgetFactory"/>
+    <aop:advisor advice-ref="loggingAdviceB"/>
+  </bean>
+</beans>

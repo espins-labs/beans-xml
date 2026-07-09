@@ -1,0 +1,60 @@
+---
+source: src/collection.rs
+expression: result
+---
+{
+  "kind": "collection",
+  "content": {
+    "value": {
+      "kind": "array",
+      "content": {
+        "items": [
+          {
+            "kind": "value",
+            "content": {
+              "span": {
+                "start": 7,
+                "end": 23
+              },
+              "text": {
+                "value": "1",
+                "span": {
+                  "start": 14,
+                  "end": 15
+                }
+              },
+              "value_type": null,
+              "placeholders": [],
+              "spel_refs": []
+            }
+          },
+          {
+            "kind": "value",
+            "content": {
+              "span": {
+                "start": 23,
+                "end": 39
+              },
+              "text": {
+                "value": "2",
+                "span": {
+                  "start": 30,
+                  "end": 31
+                }
+              },
+              "value_type": null,
+              "placeholders": [],
+              "spel_refs": []
+            }
+          }
+        ],
+        "value_type": null,
+        "merge": null
+      }
+    },
+    "span": {
+      "start": 0,
+      "end": 47
+    }
+  }
+}

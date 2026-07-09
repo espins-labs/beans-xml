@@ -1,0 +1,99 @@
+---
+source: src/collection.rs
+expression: result
+---
+{
+  "kind": "collection",
+  "content": {
+    "value": {
+      "kind": "map",
+      "content": {
+        "entries": [
+          {
+            "span": {
+              "start": 5,
+              "end": 95
+            },
+            "key": {
+              "kind": "value",
+              "content": {
+                "span": {
+                  "start": 17,
+                  "end": 25
+                },
+                "text": {
+                  "value": "triggers",
+                  "span": {
+                    "start": 17,
+                    "end": 25
+                  }
+                },
+                "value_type": null,
+                "placeholders": [],
+                "spel_refs": []
+              }
+            },
+            "value": {
+              "kind": "collection",
+              "content": {
+                "value": {
+                  "kind": "list",
+                  "content": {
+                    "items": [
+                      {
+                        "kind": "ref",
+                        "content": {
+                          "value": {
+                            "raw": "triggerBean",
+                            "kind": "bean"
+                          },
+                          "span": {
+                            "start": 44,
+                            "end": 55
+                          }
+                        }
+                      },
+                      {
+                        "kind": "value",
+                        "content": {
+                          "span": {
+                            "start": 58,
+                            "end": 80
+                          },
+                          "text": {
+                            "value": "literal",
+                            "span": {
+                              "start": 65,
+                              "end": 72
+                            }
+                          },
+                          "value_type": null,
+                          "placeholders": [],
+                          "spel_refs": []
+                        }
+                      }
+                    ],
+                    "value_type": null,
+                    "merge": null
+                  }
+                },
+                "span": {
+                  "start": 27,
+                  "end": 87
+                }
+              }
+            },
+            "value_type": null
+          }
+        ],
+        "key_type": null,
+        "value_type": null,
+        "merge": null
+      }
+    },
+    "span": {
+      "start": 0,
+      "end": 101
+    }
+  }
+}

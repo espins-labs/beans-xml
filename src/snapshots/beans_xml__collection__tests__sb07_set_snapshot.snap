@@ -1,0 +1,54 @@
+---
+source: src/collection.rs
+expression: result
+---
+{
+  "kind": "collection",
+  "content": {
+    "value": {
+      "kind": "set",
+      "content": {
+        "items": [
+          {
+            "kind": "value",
+            "content": {
+              "span": {
+                "start": 5,
+                "end": 21
+              },
+              "text": {
+                "value": "a",
+                "span": {
+                  "start": 12,
+                  "end": 13
+                }
+              },
+              "value_type": null,
+              "placeholders": [],
+              "spel_refs": []
+            }
+          },
+          {
+            "kind": "ref",
+            "content": {
+              "value": {
+                "raw": "b",
+                "kind": "bean"
+              },
+              "span": {
+                "start": 32,
+                "end": 33
+              }
+            }
+          }
+        ],
+        "value_type": null,
+        "merge": null
+      }
+    },
+    "span": {
+      "start": 0,
+      "end": 42
+    }
+  }
+}

@@ -1,0 +1,195 @@
+{
+  "beans": {
+    "span": {
+      "start": 0,
+      "end": 292
+    },
+    "profile": null,
+    "description": null,
+    "default_lazy_init": null,
+    "default_autowire": null,
+    "default_init_method": null,
+    "default_destroy_method": null,
+    "default_merge": null,
+    "default_autowire_candidates": null,
+    "imports": [],
+    "aliases": [],
+    "beans": [
+      {
+        "span": {
+          "start": 107,
+          "end": 284
+        },
+        "id": {
+          "value": "widgetService",
+          "span": {
+            "start": 117,
+            "end": 130
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.WidgetService"
+          },
+          "span": {
+            "start": 139,
+            "end": 164
+          }
+        },
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [
+          {
+            "span": {
+              "start": 166,
+              "end": 187
+            },
+            "name": {
+              "value": "label",
+              "span": {
+                "start": 168,
+                "end": 173
+              }
+            },
+            "value": {
+              "kind": "value",
+              "content": {
+                "span": {
+                  "start": 175,
+                  "end": 186
+                },
+                "text": {
+                  "value": "Acme Widget",
+                  "span": {
+                    "start": 175,
+                    "end": 186
+                  }
+                },
+                "value_type": null,
+                "placeholders": [],
+                "spel_refs": []
+              }
+            },
+            "meta": []
+          },
+          {
+            "span": {
+              "start": 197,
+              "end": 235
+            },
+            "name": {
+              "value": "other",
+              "span": {
+                "start": 213,
+                "end": 218
+              }
+            },
+            "value": {
+              "kind": "value",
+              "content": {
+                "span": {
+                  "start": 227,
+                  "end": 232
+                },
+                "text": {
+                  "value": "world",
+                  "span": {
+                    "start": 227,
+                    "end": 232
+                  }
+                },
+                "value_type": null,
+                "placeholders": [],
+                "spel_refs": []
+              }
+            },
+            "meta": []
+          }
+        ],
+        "constructor_args": [
+          {
+            "span": {
+              "start": 188,
+              "end": 196
+            },
+            "index": 1,
+            "type_ref": null,
+            "name": null,
+            "value": {
+              "kind": "value",
+              "content": {
+                "span": {
+                  "start": 194,
+                  "end": 195
+                },
+                "text": {
+                  "value": "x",
+                  "span": {
+                    "start": 194,
+                    "end": 195
+                  }
+                },
+                "value_type": null,
+                "placeholders": [],
+                "spel_refs": []
+              }
+            },
+            "meta": []
+          },
+          {
+            "span": {
+              "start": 235,
+              "end": 277
+            },
+            "index": 0,
+            "type_ref": null,
+            "name": null,
+            "value": {
+              "kind": "value",
+              "content": {
+                "span": {
+                  "start": 269,
+                  "end": 274
+                },
+                "text": {
+                  "value": "first",
+                  "span": {
+                    "start": 269,
+                    "end": 274
+                  }
+                },
+                "value_type": null,
+                "placeholders": [],
+                "spel_refs": []
+              }
+            },
+            "meta": []
+          }
+        ],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      }
+    ],
+    "component_scans": [],
+    "property_sources": [],
+    "namespaced": [],
+    "nested_profiles": []
+  },
+  "encoding": "UTF-8",
+  "diagnostics": []
+}

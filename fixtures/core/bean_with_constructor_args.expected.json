@@ -1,0 +1,165 @@
+{
+  "beans": {
+    "span": {
+      "start": 0,
+      "end": 232
+    },
+    "profile": null,
+    "description": null,
+    "default_lazy_init": null,
+    "default_autowire": null,
+    "default_init_method": null,
+    "default_destroy_method": null,
+    "default_merge": null,
+    "default_autowire_candidates": null,
+    "imports": [],
+    "aliases": [],
+    "beans": [
+      {
+        "span": {
+          "start": 7,
+          "end": 160
+        },
+        "id": {
+          "value": "orderService",
+          "span": {
+            "start": 17,
+            "end": 29
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.OrderService"
+          },
+          "span": {
+            "start": 38,
+            "end": 62
+          }
+        },
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [],
+        "constructor_args": [
+          {
+            "span": {
+              "start": 64,
+              "end": 114
+            },
+            "index": 0,
+            "type_ref": null,
+            "name": null,
+            "value": {
+              "kind": "ref",
+              "content": {
+                "value": {
+                  "raw": "orderRepository",
+                  "kind": "bean"
+                },
+                "span": {
+                  "start": 96,
+                  "end": 111
+                }
+              }
+            },
+            "meta": []
+          },
+          {
+            "span": {
+              "start": 114,
+              "end": 153
+            },
+            "index": 1,
+            "type_ref": null,
+            "name": null,
+            "value": {
+              "kind": "value",
+              "content": {
+                "span": {
+                  "start": 148,
+                  "end": 150
+                },
+                "text": {
+                  "value": "10",
+                  "span": {
+                    "start": 148,
+                    "end": 150
+                  }
+                },
+                "value_type": null,
+                "placeholders": [],
+                "spel_refs": []
+              }
+            },
+            "meta": []
+          }
+        ],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      },
+      {
+        "span": {
+          "start": 160,
+          "end": 224
+        },
+        "id": {
+          "value": "orderRepository",
+          "span": {
+            "start": 170,
+            "end": 185
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.OrderRepository"
+          },
+          "span": {
+            "start": 194,
+            "end": 221
+          }
+        },
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [],
+        "constructor_args": [],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      }
+    ],
+    "component_scans": [],
+    "property_sources": [],
+    "namespaced": [],
+    "nested_profiles": []
+  },
+  "encoding": "UTF-8",
+  "diagnostics": []
+}

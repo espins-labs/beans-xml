@@ -1,0 +1,1 @@
+<beans><bean id="requestScopedBean" class="com.example.RequestHandler" scope="prototype" lazy-init="true"/></beans>

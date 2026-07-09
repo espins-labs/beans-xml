@@ -1,0 +1,1 @@
+<beans xmlns:c="http://www.springframework.org/schema/c"><bean id="orderService" class="com.example.OrderService" c:_0-ref="orderRepository" c:_1="10"/><bean id="orderRepository" class="com.example.OrderRepository"/></beans>

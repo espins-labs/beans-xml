@@ -1,0 +1,176 @@
+{
+  "beans": {
+    "span": {
+      "start": 0,
+      "end": 225
+    },
+    "profile": null,
+    "description": null,
+    "default_lazy_init": null,
+    "default_autowire": null,
+    "default_init_method": null,
+    "default_destroy_method": null,
+    "default_merge": null,
+    "default_autowire_candidates": null,
+    "imports": [],
+    "aliases": [],
+    "beans": [
+      {
+        "span": {
+          "start": 7,
+          "end": 105
+        },
+        "id": {
+          "value": "widgetService",
+          "span": {
+            "start": 17,
+            "end": 30
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.WidgetService"
+          },
+          "span": {
+            "start": 39,
+            "end": 64
+          }
+        },
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [
+          {
+            "value": {
+              "raw": "dataSource",
+              "kind": "bean"
+            },
+            "span": {
+              "start": 78,
+              "end": 88
+            }
+          },
+          {
+            "value": {
+              "raw": "cacheManager",
+              "kind": "bean"
+            },
+            "span": {
+              "start": 90,
+              "end": 102
+            }
+          }
+        ],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [],
+        "constructor_args": [],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      },
+      {
+        "span": {
+          "start": 105,
+          "end": 159
+        },
+        "id": {
+          "value": "dataSource",
+          "span": {
+            "start": 115,
+            "end": 125
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.DataSource"
+          },
+          "span": {
+            "start": 134,
+            "end": 156
+          }
+        },
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [],
+        "constructor_args": [],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      },
+      {
+        "span": {
+          "start": 159,
+          "end": 217
+        },
+        "id": {
+          "value": "cacheManager",
+          "span": {
+            "start": 169,
+            "end": 181
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.CacheManager"
+          },
+          "span": {
+            "start": 190,
+            "end": 214
+          }
+        },
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [],
+        "constructor_args": [],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      }
+    ],
+    "component_scans": [],
+    "property_sources": [],
+    "namespaced": [],
+    "nested_profiles": []
+  },
+  "encoding": "UTF-8",
+  "diagnostics": []
+}

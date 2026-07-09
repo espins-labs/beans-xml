@@ -1,0 +1,1 @@
+<beans><bean id="triggerHolder" class="com.example.TriggerHolder"><property name="triggers"><map><entry key="group1"><list><ref bean="cronTriggerBean"/></list></entry></map></property></bean><bean id="cronTriggerBean" class="com.example.CronTriggerBean"/></beans>

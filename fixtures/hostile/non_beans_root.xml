@@ -1,0 +1,1 @@
+<project><bean id="widgetService" class="com.example.WidgetService"/></project>

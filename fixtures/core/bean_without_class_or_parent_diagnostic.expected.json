@@ -1,0 +1,70 @@
+{
+  "beans": {
+    "span": {
+      "start": 0,
+      "end": 38
+    },
+    "profile": null,
+    "description": null,
+    "default_lazy_init": null,
+    "default_autowire": null,
+    "default_init_method": null,
+    "default_destroy_method": null,
+    "default_merge": null,
+    "default_autowire_candidates": null,
+    "imports": [],
+    "aliases": [],
+    "beans": [
+      {
+        "span": {
+          "start": 7,
+          "end": 30
+        },
+        "id": {
+          "value": "brokenBean",
+          "span": {
+            "start": 17,
+            "end": 27
+          }
+        },
+        "names": [],
+        "class": null,
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [],
+        "constructor_args": [],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      }
+    ],
+    "component_scans": [],
+    "property_sources": [],
+    "namespaced": [],
+    "nested_profiles": []
+  },
+  "encoding": "UTF-8",
+  "diagnostics": [
+    {
+      "code": "bean_without_class_or_parent",
+      "span": {
+        "start": 7,
+        "end": 30
+      },
+      "message": "bean has none of class/parent/factory-bean and is not abstract"
+    }
+  ]
+}

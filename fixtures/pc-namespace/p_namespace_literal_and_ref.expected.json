@@ -1,0 +1,173 @@
+{
+  "beans": {
+    "span": {
+      "start": 0,
+      "end": 249
+    },
+    "profile": null,
+    "description": null,
+    "default_lazy_init": null,
+    "default_autowire": null,
+    "default_init_method": null,
+    "default_destroy_method": null,
+    "default_merge": null,
+    "default_autowire_candidates": null,
+    "imports": [],
+    "aliases": [],
+    "beans": [
+      {
+        "span": {
+          "start": 57,
+          "end": 175
+        },
+        "id": {
+          "value": "widgetService",
+          "span": {
+            "start": 67,
+            "end": 80
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.WidgetService"
+          },
+          "span": {
+            "start": 89,
+            "end": 114
+          }
+        },
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [
+          {
+            "span": {
+              "start": 116,
+              "end": 137
+            },
+            "name": {
+              "value": "label",
+              "span": {
+                "start": 118,
+                "end": 123
+              }
+            },
+            "value": {
+              "kind": "value",
+              "content": {
+                "span": {
+                  "start": 125,
+                  "end": 136
+                },
+                "text": {
+                  "value": "Acme Widget",
+                  "span": {
+                    "start": 125,
+                    "end": 136
+                  }
+                },
+                "value_type": null,
+                "placeholders": [],
+                "spel_refs": []
+              }
+            },
+            "meta": []
+          },
+          {
+            "span": {
+              "start": 138,
+              "end": 173
+            },
+            "name": {
+              "value": "repository",
+              "span": {
+                "start": 140,
+                "end": 150
+              }
+            },
+            "value": {
+              "kind": "ref",
+              "content": {
+                "value": {
+                  "raw": "widgetRepository",
+                  "kind": "bean"
+                },
+                "span": {
+                  "start": 156,
+                  "end": 172
+                }
+              }
+            },
+            "meta": []
+          }
+        ],
+        "constructor_args": [],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      },
+      {
+        "span": {
+          "start": 175,
+          "end": 241
+        },
+        "id": {
+          "value": "widgetRepository",
+          "span": {
+            "start": 185,
+            "end": 201
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.WidgetRepository"
+          },
+          "span": {
+            "start": 210,
+            "end": 238
+          }
+        },
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [],
+        "constructor_args": [],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      }
+    ],
+    "component_scans": [],
+    "property_sources": [],
+    "namespaced": [],
+    "nested_profiles": []
+  },
+  "encoding": "UTF-8",
+  "diagnostics": []
+}

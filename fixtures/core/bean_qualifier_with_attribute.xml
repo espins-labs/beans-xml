@@ -1,0 +1,1 @@
+<beans><bean id="widgetService" class="com.example.WidgetService"><qualifier type="com.example.Genuine" value="main"><attribute key="priority" value="high"/></qualifier></bean></beans>

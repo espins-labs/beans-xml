@@ -1,0 +1,1 @@
+<beans><bean id="baseService" abstract="true"><property name="labels"><list><value>base</value></list></property></bean><bean id="widgetService" class="com.example.WidgetService" parent="baseService"><property name="labels"><list merge="true"><value>extra</value></list></property></bean></beans>

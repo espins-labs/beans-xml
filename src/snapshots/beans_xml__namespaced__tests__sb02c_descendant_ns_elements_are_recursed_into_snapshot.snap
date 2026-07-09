@@ -1,0 +1,26 @@
+---
+source: src/namespaced.rs
+expression: result
+---
+{
+  "ns": "http://www.springframework.org/schema/aop",
+  "local": "config",
+  "span": {
+    "start": 0,
+    "end": 200
+  },
+  "id": null,
+  "attrs": [],
+  "refs": [
+    {
+      "value": {
+        "raw": "loggingAspect",
+        "kind": "bean"
+      },
+      "span": {
+        "start": 83,
+        "end": 96
+      }
+    }
+  ]
+}

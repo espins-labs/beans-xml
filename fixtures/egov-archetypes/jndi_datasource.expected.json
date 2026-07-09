@@ -1,0 +1,252 @@
+{
+  "beans": {
+    "span": {
+      "start": 0,
+      "end": 446
+    },
+    "profile": null,
+    "description": null,
+    "default_lazy_init": null,
+    "default_autowire": null,
+    "default_init_method": null,
+    "default_destroy_method": null,
+    "default_merge": null,
+    "default_autowire_candidates": null,
+    "imports": [],
+    "aliases": [],
+    "beans": [
+      {
+        "span": {
+          "start": 172,
+          "end": 316
+        },
+        "id": {
+          "value": "jndiEnvironment",
+          "span": {
+            "start": 182,
+            "end": 197
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.util.PropertiesFactoryBean"
+          },
+          "span": {
+            "start": 206,
+            "end": 244
+          }
+        },
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [
+          {
+            "span": {
+              "start": 247,
+              "end": 308
+            },
+            "name": {
+              "value": "location",
+              "span": {
+                "start": 263,
+                "end": 271
+              }
+            },
+            "value": {
+              "kind": "value",
+              "content": {
+                "span": {
+                  "start": 280,
+                  "end": 305
+                },
+                "text": {
+                  "value": "classpath:jndi.properties",
+                  "span": {
+                    "start": 280,
+                    "end": 305
+                  }
+                },
+                "value_type": null,
+                "placeholders": [],
+                "spel_refs": []
+              }
+            },
+            "meta": []
+          }
+        ],
+        "constructor_args": [],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      },
+      {
+        "span": {
+          "start": 317,
+          "end": 437
+        },
+        "id": {
+          "value": "widgetRepository",
+          "span": {
+            "start": 327,
+            "end": 343
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.WidgetRepository"
+          },
+          "span": {
+            "start": 352,
+            "end": 380
+          }
+        },
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [
+          {
+            "span": {
+              "start": 383,
+              "end": 429
+            },
+            "name": {
+              "value": "dataSource",
+              "span": {
+                "start": 399,
+                "end": 409
+              }
+            },
+            "value": {
+              "kind": "ref",
+              "content": {
+                "value": {
+                  "raw": "dataSource",
+                  "kind": "bean"
+                },
+                "span": {
+                  "start": 416,
+                  "end": 426
+                }
+              }
+            },
+            "meta": []
+          }
+        ],
+        "constructor_args": [],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      }
+    ],
+    "component_scans": [],
+    "property_sources": [],
+    "namespaced": [
+      {
+        "ns": "http://www.springframework.org/schema/jee",
+        "local": "jndi-lookup",
+        "span": {
+          "start": 62,
+          "end": 171
+        },
+        "id": {
+          "value": "dataSource",
+          "span": {
+            "start": 83,
+            "end": 93
+          }
+        },
+        "attrs": [
+          {
+            "key": {
+              "value": "id",
+              "span": {
+                "start": 79,
+                "end": 81
+              }
+            },
+            "value": {
+              "value": "dataSource",
+              "span": {
+                "start": 83,
+                "end": 93
+              }
+            }
+          },
+          {
+            "key": {
+              "value": "jndi-name",
+              "span": {
+                "start": 95,
+                "end": 104
+              }
+            },
+            "value": {
+              "value": "java:comp/env/jdbc/ExampleDS",
+              "span": {
+                "start": 106,
+                "end": 134
+              }
+            }
+          },
+          {
+            "key": {
+              "value": "environment-ref",
+              "span": {
+                "start": 136,
+                "end": 151
+              }
+            },
+            "value": {
+              "value": "jndiEnvironment",
+              "span": {
+                "start": 153,
+                "end": 168
+              }
+            }
+          }
+        ],
+        "refs": [
+          {
+            "value": {
+              "raw": "jndiEnvironment",
+              "kind": "bean"
+            },
+            "span": {
+              "start": 153,
+              "end": 168
+            }
+          }
+        ]
+      }
+    ],
+    "nested_profiles": []
+  },
+  "encoding": "UTF-8",
+  "diagnostics": []
+}

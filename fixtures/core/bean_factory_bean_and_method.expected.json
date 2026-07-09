@@ -1,0 +1,119 @@
+{
+  "beans": {
+    "span": {
+      "start": 0,
+      "end": 188
+    },
+    "profile": null,
+    "description": null,
+    "default_lazy_init": null,
+    "default_autowire": null,
+    "default_init_method": null,
+    "default_destroy_method": null,
+    "default_merge": null,
+    "default_autowire_candidates": null,
+    "imports": [],
+    "aliases": [],
+    "beans": [
+      {
+        "span": {
+          "start": 7,
+          "end": 81
+        },
+        "id": {
+          "value": "widgetServiceFactory",
+          "span": {
+            "start": 17,
+            "end": 37
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.WidgetServiceFactory"
+          },
+          "span": {
+            "start": 46,
+            "end": 78
+          }
+        },
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [],
+        "constructor_args": [],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      },
+      {
+        "span": {
+          "start": 81,
+          "end": 180
+        },
+        "id": {
+          "value": "widgetService",
+          "span": {
+            "start": 91,
+            "end": 104
+          }
+        },
+        "names": [],
+        "class": null,
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": {
+          "value": {
+            "raw": "widgetServiceFactory",
+            "kind": "bean"
+          },
+          "span": {
+            "start": 120,
+            "end": 140
+          }
+        },
+        "factory_method": {
+          "value": "createWidgetService",
+          "span": {
+            "start": 158,
+            "end": 177
+          }
+        },
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [],
+        "constructor_args": [],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      }
+    ],
+    "component_scans": [],
+    "property_sources": [],
+    "namespaced": [],
+    "nested_profiles": []
+  },
+  "encoding": "UTF-8",
+  "diagnostics": []
+}

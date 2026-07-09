@@ -1,0 +1,58 @@
+{
+  "beans": {
+    "span": {
+      "start": 0,
+      "end": 107
+    },
+    "profile": null,
+    "description": null,
+    "default_lazy_init": null,
+    "default_autowire": null,
+    "default_init_method": null,
+    "default_destroy_method": null,
+    "default_merge": null,
+    "default_autowire_candidates": null,
+    "imports": [
+      {
+        "value": {
+          "resource": {
+            "value": "services-context.xml",
+            "span": {
+              "start": 25,
+              "end": 45
+            }
+          },
+          "kind": "relative"
+        },
+        "span": {
+          "start": 7,
+          "end": 48
+        }
+      },
+      {
+        "value": {
+          "resource": {
+            "value": "http://example.com/context.xml",
+            "span": {
+              "start": 66,
+              "end": 96
+            }
+          },
+          "kind": "url"
+        },
+        "span": {
+          "start": 48,
+          "end": 99
+        }
+      }
+    ],
+    "aliases": [],
+    "beans": [],
+    "component_scans": [],
+    "property_sources": [],
+    "namespaced": [],
+    "nested_profiles": []
+  },
+  "encoding": "UTF-8",
+  "diagnostics": []
+}

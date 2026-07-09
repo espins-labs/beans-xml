@@ -1,0 +1,1 @@
+<beans><bean id="widgetService" class="com.example.WidgetService"><property name="lookup"><map key-type="java.lang.String"><entry key="first" value-ref="widgetRepository"/></map></property></bean><bean id="widgetRepository" class="com.example.WidgetRepository"/></beans>

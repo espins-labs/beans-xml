@@ -1,0 +1,456 @@
+{
+  "beans": {
+    "span": {
+      "start": 0,
+      "end": 715
+    },
+    "profile": null,
+    "description": null,
+    "default_lazy_init": null,
+    "default_autowire": null,
+    "default_init_method": null,
+    "default_destroy_method": null,
+    "default_merge": null,
+    "default_autowire_candidates": null,
+    "imports": [],
+    "aliases": [],
+    "beans": [
+      {
+        "span": {
+          "start": 8,
+          "end": 76
+        },
+        "id": {
+          "value": "sampleService",
+          "span": {
+            "start": 18,
+            "end": 31
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.service.SampleService"
+          },
+          "span": {
+            "start": 40,
+            "end": 73
+          }
+        },
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [],
+        "constructor_args": [],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      },
+      {
+        "span": {
+          "start": 77,
+          "end": 368
+        },
+        "id": {
+          "value": "sampleJobDetail",
+          "span": {
+            "start": 87,
+            "end": 102
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.quartz.JobDetailBean"
+          },
+          "span": {
+            "start": 111,
+            "end": 143
+          }
+        },
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [
+          {
+            "span": {
+              "start": 146,
+              "end": 207
+            },
+            "name": {
+              "value": "jobClass",
+              "span": {
+                "start": 162,
+                "end": 170
+              }
+            },
+            "value": {
+              "kind": "value",
+              "content": {
+                "span": {
+                  "start": 179,
+                  "end": 204
+                },
+                "text": {
+                  "value": "com.example.job.SampleJob",
+                  "span": {
+                    "start": 179,
+                    "end": 204
+                  }
+                },
+                "value_type": null,
+                "placeholders": [],
+                "spel_refs": []
+              }
+            },
+            "meta": []
+          },
+          {
+            "span": {
+              "start": 208,
+              "end": 360
+            },
+            "name": {
+              "value": "jobDataAsMap",
+              "span": {
+                "start": 224,
+                "end": 236
+              }
+            },
+            "value": {
+              "kind": "collection",
+              "content": {
+                "value": {
+                  "kind": "map",
+                  "content": {
+                    "entries": [
+                      {
+                        "span": {
+                          "start": 245,
+                          "end": 298
+                        },
+                        "key": {
+                          "kind": "value",
+                          "content": {
+                            "span": {
+                              "start": 257,
+                              "end": 269
+                            },
+                            "text": {
+                              "value": "targetObject",
+                              "span": {
+                                "start": 257,
+                                "end": 269
+                              }
+                            },
+                            "value_type": null,
+                            "placeholders": [],
+                            "spel_refs": []
+                          }
+                        },
+                        "value": {
+                          "kind": "ref",
+                          "content": {
+                            "value": {
+                              "raw": "sampleService",
+                              "kind": "bean"
+                            },
+                            "span": {
+                              "start": 282,
+                              "end": 295
+                            }
+                          }
+                        },
+                        "value_type": null
+                      },
+                      {
+                        "span": {
+                          "start": 299,
+                          "end": 341
+                        },
+                        "key": {
+                          "kind": "value",
+                          "content": {
+                            "span": {
+                              "start": 311,
+                              "end": 323
+                            },
+                            "text": {
+                              "value": "targetMethod",
+                              "span": {
+                                "start": 311,
+                                "end": 323
+                              }
+                            },
+                            "value_type": null,
+                            "placeholders": [],
+                            "spel_refs": []
+                          }
+                        },
+                        "value": {
+                          "kind": "value",
+                          "content": {
+                            "span": {
+                              "start": 332,
+                              "end": 338
+                            },
+                            "text": {
+                              "value": "runJob",
+                              "span": {
+                                "start": 332,
+                                "end": 338
+                              }
+                            },
+                            "value_type": null,
+                            "placeholders": [],
+                            "spel_refs": []
+                          }
+                        },
+                        "value_type": null
+                      }
+                    ],
+                    "key_type": null,
+                    "value_type": null,
+                    "merge": null
+                  }
+                },
+                "span": {
+                  "start": 239,
+                  "end": 348
+                }
+              }
+            },
+            "meta": []
+          }
+        ],
+        "constructor_args": [],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      },
+      {
+        "span": {
+          "start": 369,
+          "end": 548
+        },
+        "id": {
+          "value": "cronTrigger",
+          "span": {
+            "start": 379,
+            "end": 390
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.quartz.CronTriggerBean"
+          },
+          "span": {
+            "start": 399,
+            "end": 433
+          }
+        },
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [
+          {
+            "span": {
+              "start": 436,
+              "end": 486
+            },
+            "name": {
+              "value": "jobDetail",
+              "span": {
+                "start": 452,
+                "end": 461
+              }
+            },
+            "value": {
+              "kind": "ref",
+              "content": {
+                "value": {
+                  "raw": "sampleJobDetail",
+                  "kind": "bean"
+                },
+                "span": {
+                  "start": 468,
+                  "end": 483
+                }
+              }
+            },
+            "meta": []
+          },
+          {
+            "span": {
+              "start": 487,
+              "end": 540
+            },
+            "name": {
+              "value": "cronExpression",
+              "span": {
+                "start": 503,
+                "end": 517
+              }
+            },
+            "value": {
+              "kind": "value",
+              "content": {
+                "span": {
+                  "start": 526,
+                  "end": 537
+                },
+                "text": {
+                  "value": "0 0 1 * * ?",
+                  "span": {
+                    "start": 526,
+                    "end": 537
+                  }
+                },
+                "value_type": null,
+                "placeholders": [],
+                "spel_refs": []
+              }
+            },
+            "meta": []
+          }
+        ],
+        "constructor_args": [],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      },
+      {
+        "span": {
+          "start": 549,
+          "end": 706
+        },
+        "id": {
+          "value": "scheduler",
+          "span": {
+            "start": 559,
+            "end": 568
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.quartz.SchedulerFactoryBean"
+          },
+          "span": {
+            "start": 577,
+            "end": 616
+          }
+        },
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [
+          {
+            "span": {
+              "start": 619,
+              "end": 698
+            },
+            "name": {
+              "value": "triggers",
+              "span": {
+                "start": 635,
+                "end": 643
+              }
+            },
+            "value": {
+              "kind": "collection",
+              "content": {
+                "value": {
+                  "kind": "list",
+                  "content": {
+                    "items": [
+                      {
+                        "kind": "ref",
+                        "content": {
+                          "value": {
+                            "raw": "cronTrigger",
+                            "kind": "bean"
+                          },
+                          "span": {
+                            "start": 664,
+                            "end": 675
+                          }
+                        }
+                      }
+                    ],
+                    "value_type": null,
+                    "merge": null
+                  }
+                },
+                "span": {
+                  "start": 646,
+                  "end": 686
+                }
+              }
+            },
+            "meta": []
+          }
+        ],
+        "constructor_args": [],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      }
+    ],
+    "component_scans": [],
+    "property_sources": [],
+    "namespaced": [],
+    "nested_profiles": []
+  },
+  "encoding": "UTF-8",
+  "diagnostics": []
+}

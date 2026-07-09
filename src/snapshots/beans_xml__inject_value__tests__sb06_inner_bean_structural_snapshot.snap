@@ -1,0 +1,84 @@
+---
+source: src/inject_value.rs
+expression: result
+---
+{
+  "kind": "inner",
+  "content": {
+    "span": {
+      "start": 0,
+      "end": 97
+    },
+    "id": {
+      "value": "innerBean",
+      "span": {
+        "start": 10,
+        "end": 19
+      }
+    },
+    "names": [],
+    "class": {
+      "value": {
+        "raw": "com.example.Widget"
+      },
+      "span": {
+        "start": 28,
+        "end": 46
+      }
+    },
+    "parent": null,
+    "scope": null,
+    "abstract": false,
+    "lazy_init": null,
+    "primary": false,
+    "autowire": null,
+    "autowire_candidate": null,
+    "depends_on": [],
+    "factory_bean": null,
+    "factory_method": null,
+    "init_method": null,
+    "destroy_method": null,
+    "properties": [
+      {
+        "span": {
+          "start": 48,
+          "end": 90
+        },
+        "name": {
+          "value": "ignoredForNow",
+          "span": {
+            "start": 64,
+            "end": 77
+          }
+        },
+        "value": {
+          "kind": "value",
+          "content": {
+            "span": {
+              "start": 86,
+              "end": 87
+            },
+            "text": {
+              "value": "1",
+              "span": {
+                "start": 86,
+                "end": 87
+              }
+            },
+            "value_type": null,
+            "placeholders": [],
+            "spel_refs": []
+          }
+        },
+        "meta": []
+      }
+    ],
+    "constructor_args": [],
+    "lookup_methods": [],
+    "replaced_methods": [],
+    "qualifiers": [],
+    "decorators": [],
+    "description": null,
+    "meta": []
+  }
+}

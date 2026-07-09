@@ -1,0 +1,1 @@
+<beans><bean id="widgetService" class="com.example.WidgetService"><description>Handles widget business logic.</description><meta key="buildTool" value="maven"/></bean></beans>

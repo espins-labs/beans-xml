@@ -1,0 +1,1 @@
+<beans><bean id="widgetService" class="com.example.WidgetService"><property name="repository" ref="widgetRepository"/></bean><bean id="widgetRepository" class="com.example.WidgetRepository"/></beans>

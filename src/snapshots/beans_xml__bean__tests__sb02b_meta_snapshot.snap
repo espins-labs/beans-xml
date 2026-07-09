@@ -1,0 +1,64 @@
+---
+source: src/bean.rs
+expression: bean
+---
+{
+  "span": {
+    "start": 0,
+    "end": 92
+  },
+  "id": {
+    "value": "myBean",
+    "span": {
+      "start": 10,
+      "end": 16
+    }
+  },
+  "names": [],
+  "class": {
+    "value": {
+      "raw": "com.example.MyService"
+    },
+    "span": {
+      "start": 25,
+      "end": 46
+    }
+  },
+  "parent": null,
+  "scope": null,
+  "abstract": false,
+  "lazy_init": null,
+  "primary": false,
+  "autowire": null,
+  "autowire_candidate": null,
+  "depends_on": [],
+  "factory_bean": null,
+  "factory_method": null,
+  "init_method": null,
+  "destroy_method": null,
+  "properties": [],
+  "constructor_args": [],
+  "lookup_methods": [],
+  "replaced_methods": [],
+  "qualifiers": [],
+  "decorators": [],
+  "description": null,
+  "meta": [
+    {
+      "key": {
+        "value": "buildTool",
+        "span": {
+          "start": 59,
+          "end": 68
+        }
+      },
+      "value": {
+        "value": "maven",
+        "span": {
+          "start": 77,
+          "end": 82
+        }
+      }
+    }
+  ]
+}

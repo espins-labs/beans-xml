@@ -1,0 +1,17 @@
+---
+source: src/inject_value.rs
+expression: result
+---
+{
+  "kind": "ref",
+  "content": {
+    "value": {
+      "raw": "target",
+      "kind": "bean"
+    },
+    "span": {
+      "start": 11,
+      "end": 17
+    }
+  }
+}

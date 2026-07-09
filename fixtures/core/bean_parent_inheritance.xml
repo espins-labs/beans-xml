@@ -1,0 +1,1 @@
+<beans><bean id="baseService" abstract="true"><property name="timeout" value="30"/></bean><bean id="widgetService" parent="baseService" class="com.example.WidgetService"/></beans>

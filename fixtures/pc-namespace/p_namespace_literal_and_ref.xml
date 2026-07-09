@@ -1,0 +1,1 @@
+<beans xmlns:p="http://www.springframework.org/schema/p"><bean id="widgetService" class="com.example.WidgetService" p:label="Acme Widget" p:repository-ref="widgetRepository"/><bean id="widgetRepository" class="com.example.WidgetRepository"/></beans>

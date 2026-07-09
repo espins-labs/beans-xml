@@ -1,0 +1,23 @@
+<beans>
+<bean id="sampleService" class="com.example.service.SampleService"/>
+<bean id="sampleJobDetail" class="com.example.quartz.JobDetailBean">
+<property name="jobClass" value="com.example.job.SampleJob"/>
+<property name="jobDataAsMap">
+<map>
+<entry key="targetObject" value-ref="sampleService"/>
+<entry key="targetMethod" value="runJob"/>
+</map>
+</property>
+</bean>
+<bean id="cronTrigger" class="com.example.quartz.CronTriggerBean">
+<property name="jobDetail" ref="sampleJobDetail"/>
+<property name="cronExpression" value="0 0 1 * * ?"/>
+</bean>
+<bean id="scheduler" class="com.example.quartz.SchedulerFactoryBean">
+<property name="triggers">
+<list>
+<ref bean="cronTrigger"/>
+</list>
+</property>
+</bean>
+</beans>

@@ -1,0 +1,1 @@
+<beans><alias name="dataSource" alias="ds"/><alias name="dataSource" alias="mainDataSource"/><alias name="widgetService" alias="widgetSvc"/></beans>

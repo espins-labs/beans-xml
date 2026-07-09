@@ -1,0 +1,14 @@
+{
+  "beans": null,
+  "encoding": "UTF-8",
+  "diagnostics": [
+    {
+      "code": "not_beans_root",
+      "span": {
+        "start": 0,
+        "end": 79
+      },
+      "message": "document root <project> is not <beans>"
+    }
+  ]
+}

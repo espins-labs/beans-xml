@@ -1,0 +1,203 @@
+{
+  "beans": {
+    "span": {
+      "start": 0,
+      "end": 263
+    },
+    "profile": null,
+    "description": null,
+    "default_lazy_init": null,
+    "default_autowire": null,
+    "default_init_method": null,
+    "default_destroy_method": null,
+    "default_merge": null,
+    "default_autowire_candidates": null,
+    "imports": [],
+    "aliases": [],
+    "beans": [
+      {
+        "span": {
+          "start": 7,
+          "end": 191
+        },
+        "id": {
+          "value": "triggerHolder",
+          "span": {
+            "start": 17,
+            "end": 30
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.TriggerHolder"
+          },
+          "span": {
+            "start": 39,
+            "end": 64
+          }
+        },
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [
+          {
+            "span": {
+              "start": 66,
+              "end": 184
+            },
+            "name": {
+              "value": "triggers",
+              "span": {
+                "start": 82,
+                "end": 90
+              }
+            },
+            "value": {
+              "kind": "collection",
+              "content": {
+                "value": {
+                  "kind": "map",
+                  "content": {
+                    "entries": [
+                      {
+                        "span": {
+                          "start": 97,
+                          "end": 167
+                        },
+                        "key": {
+                          "kind": "value",
+                          "content": {
+                            "span": {
+                              "start": 109,
+                              "end": 115
+                            },
+                            "text": {
+                              "value": "group1",
+                              "span": {
+                                "start": 109,
+                                "end": 115
+                              }
+                            },
+                            "value_type": null,
+                            "placeholders": [],
+                            "spel_refs": []
+                          }
+                        },
+                        "value": {
+                          "kind": "collection",
+                          "content": {
+                            "value": {
+                              "kind": "list",
+                              "content": {
+                                "items": [
+                                  {
+                                    "kind": "ref",
+                                    "content": {
+                                      "value": {
+                                        "raw": "cronTriggerBean",
+                                        "kind": "bean"
+                                      },
+                                      "span": {
+                                        "start": 134,
+                                        "end": 149
+                                      }
+                                    }
+                                  }
+                                ],
+                                "value_type": null,
+                                "merge": null
+                              }
+                            },
+                            "span": {
+                              "start": 117,
+                              "end": 159
+                            }
+                          }
+                        },
+                        "value_type": null
+                      }
+                    ],
+                    "key_type": null,
+                    "value_type": null,
+                    "merge": null
+                  }
+                },
+                "span": {
+                  "start": 92,
+                  "end": 173
+                }
+              }
+            },
+            "meta": []
+          }
+        ],
+        "constructor_args": [],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      },
+      {
+        "span": {
+          "start": 191,
+          "end": 255
+        },
+        "id": {
+          "value": "cronTriggerBean",
+          "span": {
+            "start": 201,
+            "end": 216
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.CronTriggerBean"
+          },
+          "span": {
+            "start": 225,
+            "end": 252
+          }
+        },
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [],
+        "constructor_args": [],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      }
+    ],
+    "component_scans": [],
+    "property_sources": [],
+    "namespaced": [],
+    "nested_profiles": []
+  },
+  "encoding": "UTF-8",
+  "diagnostics": []
+}

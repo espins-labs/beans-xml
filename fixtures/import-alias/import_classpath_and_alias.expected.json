@@ -1,0 +1,109 @@
+{
+  "beans": {
+    "span": {
+      "start": 0,
+      "end": 166
+    },
+    "profile": null,
+    "description": null,
+    "default_lazy_init": null,
+    "default_autowire": null,
+    "default_init_method": null,
+    "default_destroy_method": null,
+    "default_merge": null,
+    "default_autowire_candidates": null,
+    "imports": [
+      {
+        "value": {
+          "resource": {
+            "value": "classpath:com/example/other-context.xml",
+            "span": {
+              "start": 25,
+              "end": 64
+            }
+          },
+          "kind": "classpath"
+        },
+        "span": {
+          "start": 7,
+          "end": 67
+        }
+      }
+    ],
+    "aliases": [
+      {
+        "value": {
+          "name": {
+            "value": "dataSource",
+            "span": {
+              "start": 80,
+              "end": 90
+            }
+          },
+          "alias": {
+            "value": "ds",
+            "span": {
+              "start": 99,
+              "end": 101
+            }
+          }
+        },
+        "span": {
+          "start": 67,
+          "end": 104
+        }
+      }
+    ],
+    "beans": [
+      {
+        "span": {
+          "start": 104,
+          "end": 158
+        },
+        "id": {
+          "value": "dataSource",
+          "span": {
+            "start": 114,
+            "end": 124
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.DataSource"
+          },
+          "span": {
+            "start": 133,
+            "end": 155
+          }
+        },
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [],
+        "constructor_args": [],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      }
+    ],
+    "component_scans": [],
+    "property_sources": [],
+    "namespaced": [],
+    "nested_profiles": []
+  },
+  "encoding": "UTF-8",
+  "diagnostics": []
+}

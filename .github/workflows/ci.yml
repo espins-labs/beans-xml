@@ -1,0 +1,94 @@
+name: ci
+on:
+  push: { branches: [main] }
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: "rustfmt, clippy", targets: "wasm32-unknown-unknown" }
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+      - run: cargo check --target wasm32-unknown-unknown   # wasm-clean gate (core crate only, see default-members)
+      - run: cargo test
+      # Schema-drift gate (I5): `sb_u0_schema_matches_committed_snapshot`
+      # (tests/u0_model.rs) only runs under this feature -- without this
+      # step it can drift from `schema/beans-xml.v1.json` with plain
+      # `cargo test` staying green (regenerate via `cargo run --example
+      # gen_schema --features schema > schema/beans-xml.v1.json`).
+      - run: cargo test --features schema
+      # beans-xml-wasm: separate crate, wasm-bindgen lives only here -- the
+      # core crate's dependency purity above is unaffected by it.
+      - run: cargo clippy -p beans-xml-wasm --target wasm32-unknown-unknown --all-targets -- -D warnings
+      - uses: taiki-e/install-action@wasm-pack
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: ./wasm/build.sh
+      - run: node wasm/tests/smoke.js
+      # Added once real code exists (post M1g-dod):
+      #  - cargo semver-checks — after the first crates.io publish
+
+  test-matrix:
+    strategy:
+      matrix: { os: [macos-latest, windows-latest] }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: "llvm-tools-preview" }
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: Swatinem/rust-cache@v2
+      # spec DoD: 90%+ line coverage (measured ~97% at M1g-dod).
+      - run: cargo llvm-cov --all-features --fail-under-lines 90
+
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-hack
+      - run: rustup toolchain install 1.79 --profile minimal
+      - run: cargo hack check --rust-version
+      # beans-xml-wasm declares its own `rust-version` too, but plain `cargo
+      # hack check --rust-version` above only covers the core crate
+      # (workspace `default-members = ["."]`) -- and the wasm crate only
+      # compiles under wasm32 (wasm-bindgen extern imports), not the host
+      # target. Cover it explicitly so a future wasm-bindgen/js-sys bump
+      # raising the real MSRV above 1.79 fails here instead of silently
+      # leaving the declared `rust-version` false.
+      - run: rustup target add wasm32-unknown-unknown --toolchain 1.79
+      - run: cargo hack check --rust-version --workspace --target wasm32-unknown-unknown
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-audit
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo audit
+
+  # Leak-safety gate (spec fixture section): the deny-list of company vocabulary is
+  # injected from a private location, never committed. Fail-closed: the scan aborts
+  # if the deny-list is empty/absent (a canary token must match). Wired here as a
+  # placeholder step; the private deny-list source is provided via repo secret before
+  # the repo is made public / published.
+  leak-scan:
+    runs-on: ubuntu-latest
+    if: ${{ false }}   # enabled once the private deny-list source is wired (pre-publish)
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }   # full history for the history scan
+      - run: echo "leak-scan placeholder — see AGENTS.md / spec fixture section"

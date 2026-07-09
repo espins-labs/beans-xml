@@ -1,0 +1,129 @@
+---
+source: src/collection.rs
+expression: result
+---
+{
+  "kind": "collection",
+  "content": {
+    "value": {
+      "kind": "map",
+      "content": {
+        "entries": [
+          {
+            "span": {
+              "start": 64,
+              "end": 90
+            },
+            "key": {
+              "kind": "value",
+              "content": {
+                "span": {
+                  "start": 76,
+                  "end": 77
+                },
+                "text": {
+                  "value": "a",
+                  "span": {
+                    "start": 76,
+                    "end": 77
+                  }
+                },
+                "value_type": null,
+                "placeholders": [],
+                "spel_refs": []
+              }
+            },
+            "value": {
+              "kind": "value",
+              "content": {
+                "span": {
+                  "start": 86,
+                  "end": 87
+                },
+                "text": {
+                  "value": "1",
+                  "span": {
+                    "start": 86,
+                    "end": 87
+                  }
+                },
+                "value_type": null,
+                "placeholders": [],
+                "spel_refs": []
+              }
+            },
+            "value_type": null
+          },
+          {
+            "span": {
+              "start": 90,
+              "end": 116
+            },
+            "key": {
+              "kind": "value",
+              "content": {
+                "span": {
+                  "start": 102,
+                  "end": 103
+                },
+                "text": {
+                  "value": "b",
+                  "span": {
+                    "start": 102,
+                    "end": 103
+                  }
+                },
+                "value_type": null,
+                "placeholders": [],
+                "spel_refs": []
+              }
+            },
+            "value": {
+              "kind": "value",
+              "content": {
+                "span": {
+                  "start": 112,
+                  "end": 113
+                },
+                "text": {
+                  "value": "2",
+                  "span": {
+                    "start": 112,
+                    "end": 113
+                  }
+                },
+                "value_type": null,
+                "placeholders": [],
+                "spel_refs": []
+              }
+            },
+            "value_type": null
+          }
+        ],
+        "key_type": {
+          "value": {
+            "raw": "java.lang.String"
+          },
+          "span": {
+            "start": 15,
+            "end": 31
+          }
+        },
+        "value_type": {
+          "value": {
+            "raw": "java.lang.Integer"
+          },
+          "span": {
+            "start": 45,
+            "end": 62
+          }
+        },
+        "merge": null
+      }
+    },
+    "span": {
+      "start": 0,
+      "end": 122
+    }
+  }
+}

@@ -1,0 +1,1 @@
+<beans><import resource="classpath*:com/example/**/context-*.xml"/></beans>

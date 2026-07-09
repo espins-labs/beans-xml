@@ -1,0 +1,1 @@
+<beans><beans profile="!prod"><bean id="featureFlag" class="com.example.FeatureFlag"/></beans><beans profile="dev,test"><bean id="debugTool" class="com.example.DebugTool"/></beans></beans>

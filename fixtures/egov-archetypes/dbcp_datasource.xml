@@ -1,0 +1,10 @@
+<beans>
+<bean id="dataSource" class="com.example.dbcp.BasicDataSource" destroy-method="close">
+<property name="driverClassName" value="com.example.jdbc.Driver"/>
+<property name="url" value="jdbc:example://localhost:5432/appdb"/>
+<property name="username" value="appuser"/>
+<property name="password" value="${db.password}"/>
+<property name="initialSize" value="5"/>
+<property name="maxTotal" value="20"/>
+</bean>
+</beans>

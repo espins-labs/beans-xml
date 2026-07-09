@@ -1,0 +1,46 @@
+{
+  "beans": {
+    "span": {
+      "start": 0,
+      "end": 137
+    },
+    "profile": null,
+    "description": null,
+    "default_lazy_init": null,
+    "default_autowire": null,
+    "default_init_method": null,
+    "default_destroy_method": null,
+    "default_merge": null,
+    "default_autowire_candidates": null,
+    "imports": [],
+    "aliases": [],
+    "beans": [],
+    "component_scans": [
+      {
+        "value": {
+          "base_packages": [
+            {
+              "value": "com.example.service",
+              "span": {
+                "start": 107,
+                "end": 126
+              }
+            }
+          ],
+          "use_default_filters": null,
+          "include_filters": [],
+          "exclude_filters": []
+        },
+        "span": {
+          "start": 69,
+          "end": 129
+        }
+      }
+    ],
+    "property_sources": [],
+    "namespaced": [],
+    "nested_profiles": []
+  },
+  "encoding": "UTF-8",
+  "diagnostics": []
+}

@@ -1,0 +1,168 @@
+{
+  "beans": {
+    "span": {
+      "start": 0,
+      "end": 188
+    },
+    "profile": null,
+    "description": null,
+    "default_lazy_init": null,
+    "default_autowire": null,
+    "default_init_method": null,
+    "default_destroy_method": null,
+    "default_merge": null,
+    "default_autowire_candidates": null,
+    "imports": [],
+    "aliases": [],
+    "beans": [],
+    "component_scans": [],
+    "property_sources": [],
+    "namespaced": [],
+    "nested_profiles": [
+      {
+        "span": {
+          "start": 7,
+          "end": 94
+        },
+        "profile": {
+          "value": "!prod",
+          "span": {
+            "start": 23,
+            "end": 28
+          }
+        },
+        "description": null,
+        "default_lazy_init": null,
+        "default_autowire": null,
+        "default_init_method": null,
+        "default_destroy_method": null,
+        "default_merge": null,
+        "default_autowire_candidates": null,
+        "imports": [],
+        "aliases": [],
+        "beans": [
+          {
+            "span": {
+              "start": 30,
+              "end": 86
+            },
+            "id": {
+              "value": "featureFlag",
+              "span": {
+                "start": 40,
+                "end": 51
+              }
+            },
+            "names": [],
+            "class": {
+              "value": {
+                "raw": "com.example.FeatureFlag"
+              },
+              "span": {
+                "start": 60,
+                "end": 83
+              }
+            },
+            "parent": null,
+            "scope": null,
+            "abstract": false,
+            "lazy_init": null,
+            "primary": false,
+            "autowire": null,
+            "autowire_candidate": null,
+            "depends_on": [],
+            "factory_bean": null,
+            "factory_method": null,
+            "init_method": null,
+            "destroy_method": null,
+            "properties": [],
+            "constructor_args": [],
+            "lookup_methods": [],
+            "replaced_methods": [],
+            "qualifiers": [],
+            "decorators": [],
+            "description": null,
+            "meta": []
+          }
+        ],
+        "component_scans": [],
+        "property_sources": [],
+        "namespaced": [],
+        "nested_profiles": []
+      },
+      {
+        "span": {
+          "start": 94,
+          "end": 180
+        },
+        "profile": {
+          "value": "dev,test",
+          "span": {
+            "start": 110,
+            "end": 118
+          }
+        },
+        "description": null,
+        "default_lazy_init": null,
+        "default_autowire": null,
+        "default_init_method": null,
+        "default_destroy_method": null,
+        "default_merge": null,
+        "default_autowire_candidates": null,
+        "imports": [],
+        "aliases": [],
+        "beans": [
+          {
+            "span": {
+              "start": 120,
+              "end": 172
+            },
+            "id": {
+              "value": "debugTool",
+              "span": {
+                "start": 130,
+                "end": 139
+              }
+            },
+            "names": [],
+            "class": {
+              "value": {
+                "raw": "com.example.DebugTool"
+              },
+              "span": {
+                "start": 148,
+                "end": 169
+              }
+            },
+            "parent": null,
+            "scope": null,
+            "abstract": false,
+            "lazy_init": null,
+            "primary": false,
+            "autowire": null,
+            "autowire_candidate": null,
+            "depends_on": [],
+            "factory_bean": null,
+            "factory_method": null,
+            "init_method": null,
+            "destroy_method": null,
+            "properties": [],
+            "constructor_args": [],
+            "lookup_methods": [],
+            "replaced_methods": [],
+            "qualifiers": [],
+            "decorators": [],
+            "description": null,
+            "meta": []
+          }
+        ],
+        "component_scans": [],
+        "property_sources": [],
+        "namespaced": [],
+        "nested_profiles": []
+      }
+    ]
+  },
+  "encoding": "UTF-8",
+  "diagnostics": []
+}

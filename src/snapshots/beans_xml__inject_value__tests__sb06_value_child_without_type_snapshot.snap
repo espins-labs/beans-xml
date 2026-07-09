@@ -1,0 +1,23 @@
+---
+source: src/inject_value.rs
+expression: result
+---
+{
+  "kind": "value",
+  "content": {
+    "span": {
+      "start": 0,
+      "end": 26
+    },
+    "text": {
+      "value": "hello world",
+      "span": {
+        "start": 7,
+        "end": 18
+      }
+    },
+    "value_type": null,
+    "placeholders": [],
+    "spel_refs": []
+  }
+}

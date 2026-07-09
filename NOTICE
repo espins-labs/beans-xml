@@ -1,0 +1,24 @@
+beans-xml
+Copyright 2026 ESPINS <dlwlalsggg@gmail.com>
+
+This product is dual-licensed under MIT OR Apache-2.0 (see LICENSE-MIT,
+LICENSE-APACHE).
+
+------------------------------------------------------------------------------
+Pattern inspiration (no code copied)
+------------------------------------------------------------------------------
+
+The synthetic test fixtures under `fixtures/` were authored from scratch
+(`com.example.*` identifiers). Their real-world *shapes* were learned from
+public Spring documentation and from the public eGovFrame sample project:
+
+    eGovFramework/egovframe-web-sample  (Apache License 2.0)
+    https://github.com/eGovFramework/egovframe-web-sample
+
+No source, configuration, class names, or bean ids were copied from that (or
+any) project — only common Spring-XML wiring patterns were reproduced with
+original, synthetic content.
+
+"Spring" and "Spring Framework" are trademarks of Broadcom Inc. This project
+is unofficial and not affiliated with or endorsed by Broadcom or the Spring
+project; the name is used descriptively (this library parses Spring bean XML).

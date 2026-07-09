@@ -1,0 +1,140 @@
+---
+source: src/bean.rs
+expression: bean
+---
+{
+  "span": {
+    "start": 0,
+    "end": 345
+  },
+  "id": {
+    "value": "myBean",
+    "span": {
+      "start": 10,
+      "end": 16
+    }
+  },
+  "names": [],
+  "class": {
+    "value": {
+      "raw": "com.example.MyService"
+    },
+    "span": {
+      "start": 25,
+      "end": 46
+    }
+  },
+  "parent": null,
+  "scope": null,
+  "abstract": false,
+  "lazy_init": null,
+  "primary": false,
+  "autowire": null,
+  "autowire_candidate": null,
+  "depends_on": [],
+  "factory_bean": null,
+  "factory_method": null,
+  "init_method": null,
+  "destroy_method": null,
+  "properties": [],
+  "constructor_args": [],
+  "lookup_methods": [],
+  "replaced_methods": [],
+  "qualifiers": [
+    {
+      "span": {
+        "start": 153,
+        "end": 256
+      },
+      "type": {
+        "value": {
+          "raw": "com.example.Genuine"
+        },
+        "span": {
+          "start": 170,
+          "end": 189
+        }
+      },
+      "value": {
+        "value": "main",
+        "span": {
+          "start": 198,
+          "end": 202
+        }
+      },
+      "attributes": [
+        {
+          "key": {
+            "value": "priority",
+            "span": {
+              "start": 220,
+              "end": 228
+            }
+          },
+          "value": {
+            "value": "high",
+            "span": {
+              "start": 237,
+              "end": 241
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "decorators": [
+    {
+      "ns": "http://www.springframework.org/schema/aop",
+      "local": "scoped-proxy",
+      "span": {
+        "start": 293,
+        "end": 338
+      },
+      "id": null,
+      "attrs": [
+        {
+          "key": {
+            "value": "proxy-target-class",
+            "span": {
+              "start": 311,
+              "end": 329
+            }
+          },
+          "value": {
+            "value": "true",
+            "span": {
+              "start": 331,
+              "end": 335
+            }
+          }
+        }
+      ],
+      "refs": []
+    }
+  ],
+  "description": {
+    "value": "Handles example widgets.",
+    "span": {
+      "start": 115,
+      "end": 139
+    }
+  },
+  "meta": [
+    {
+      "key": {
+        "value": "buildTool",
+        "span": {
+          "start": 267,
+          "end": 276
+        }
+      },
+      "value": {
+        "value": "maven",
+        "span": {
+          "start": 285,
+          "end": 290
+        }
+      }
+    }
+  ]
+}

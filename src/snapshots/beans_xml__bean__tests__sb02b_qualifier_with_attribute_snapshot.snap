@@ -1,0 +1,88 @@
+---
+source: src/bean.rs
+expression: bean
+---
+{
+  "span": {
+    "start": 0,
+    "end": 158
+  },
+  "id": {
+    "value": "myBean",
+    "span": {
+      "start": 10,
+      "end": 16
+    }
+  },
+  "names": [],
+  "class": {
+    "value": {
+      "raw": "com.example.MyService"
+    },
+    "span": {
+      "start": 25,
+      "end": 46
+    }
+  },
+  "parent": null,
+  "scope": null,
+  "abstract": false,
+  "lazy_init": null,
+  "primary": false,
+  "autowire": null,
+  "autowire_candidate": null,
+  "depends_on": [],
+  "factory_bean": null,
+  "factory_method": null,
+  "init_method": null,
+  "destroy_method": null,
+  "properties": [],
+  "constructor_args": [],
+  "lookup_methods": [],
+  "replaced_methods": [],
+  "qualifiers": [
+    {
+      "span": {
+        "start": 48,
+        "end": 151
+      },
+      "type": {
+        "value": {
+          "raw": "com.example.Genuine"
+        },
+        "span": {
+          "start": 65,
+          "end": 84
+        }
+      },
+      "value": {
+        "value": "main",
+        "span": {
+          "start": 93,
+          "end": 97
+        }
+      },
+      "attributes": [
+        {
+          "key": {
+            "value": "priority",
+            "span": {
+              "start": 115,
+              "end": 123
+            }
+          },
+          "value": {
+            "value": "high",
+            "span": {
+              "start": 132,
+              "end": 136
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "decorators": [],
+  "description": null,
+  "meta": []
+}

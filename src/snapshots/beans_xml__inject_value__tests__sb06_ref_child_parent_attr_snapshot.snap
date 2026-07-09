@@ -1,0 +1,17 @@
+---
+source: src/inject_value.rs
+expression: result
+---
+{
+  "kind": "ref",
+  "content": {
+    "value": {
+      "raw": "target",
+      "kind": "parent_container"
+    },
+    "span": {
+      "start": 13,
+      "end": 19
+    }
+  }
+}

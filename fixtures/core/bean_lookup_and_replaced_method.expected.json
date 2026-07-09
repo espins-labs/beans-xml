@@ -1,0 +1,216 @@
+{
+  "beans": {
+    "span": {
+      "start": 0,
+      "end": 364
+    },
+    "profile": null,
+    "description": null,
+    "default_lazy_init": null,
+    "default_autowire": null,
+    "default_init_method": null,
+    "default_destroy_method": null,
+    "default_merge": null,
+    "default_autowire_candidates": null,
+    "imports": [],
+    "aliases": [],
+    "beans": [
+      {
+        "span": {
+          "start": 7,
+          "end": 250
+        },
+        "id": {
+          "value": "commandProcessor",
+          "span": {
+            "start": 17,
+            "end": 33
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.CommandProcessor"
+          },
+          "span": {
+            "start": 42,
+            "end": 70
+          }
+        },
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [],
+        "constructor_args": [],
+        "lookup_methods": [
+          {
+            "value": {
+              "name": {
+                "value": "createCommand",
+                "span": {
+                  "start": 93,
+                  "end": 106
+                }
+              },
+              "bean": {
+                "value": {
+                  "raw": "commandBean",
+                  "kind": "bean"
+                },
+                "span": {
+                  "start": 114,
+                  "end": 125
+                }
+              }
+            },
+            "span": {
+              "start": 72,
+              "end": 128
+            }
+          }
+        ],
+        "replaced_methods": [
+          {
+            "value": {
+              "name": {
+                "value": "computeValue",
+                "span": {
+                  "start": 151,
+                  "end": 163
+                }
+              },
+              "replacer": {
+                "value": {
+                  "raw": "replacerBean",
+                  "kind": "bean"
+                },
+                "span": {
+                  "start": 175,
+                  "end": 187
+                }
+              },
+              "arg_types": [
+                {
+                  "value": "java.lang.String",
+                  "span": {
+                    "start": 206,
+                    "end": 222
+                  }
+                }
+              ]
+            },
+            "span": {
+              "start": 128,
+              "end": 243
+            }
+          }
+        ],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      },
+      {
+        "span": {
+          "start": 250,
+          "end": 302
+        },
+        "id": {
+          "value": "commandBean",
+          "span": {
+            "start": 260,
+            "end": 271
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.Command"
+          },
+          "span": {
+            "start": 280,
+            "end": 299
+          }
+        },
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [],
+        "constructor_args": [],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      },
+      {
+        "span": {
+          "start": 302,
+          "end": 356
+        },
+        "id": {
+          "value": "replacerBean",
+          "span": {
+            "start": 312,
+            "end": 324
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.Replacer"
+          },
+          "span": {
+            "start": 333,
+            "end": 353
+          }
+        },
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [],
+        "constructor_args": [],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      }
+    ],
+    "component_scans": [],
+    "property_sources": [],
+    "namespaced": [],
+    "nested_profiles": []
+  },
+  "encoding": "UTF-8",
+  "diagnostics": []
+}

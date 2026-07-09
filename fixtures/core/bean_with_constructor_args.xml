@@ -1,0 +1,1 @@
+<beans><bean id="orderService" class="com.example.OrderService"><constructor-arg index="0" ref="orderRepository"/><constructor-arg index="1" value="10"/></bean><bean id="orderRepository" class="com.example.OrderRepository"/></beans>

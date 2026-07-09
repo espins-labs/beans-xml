@@ -1,0 +1,1 @@
+<beans><bean id="widgetService" class="com.example.WidgetService" depends-on="dataSource, cacheManager"/><bean id="dataSource" class="com.example.DataSource"/><bean id="cacheManager" class="com.example.CacheManager"/></beans>

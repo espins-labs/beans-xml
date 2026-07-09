@@ -1,0 +1,11 @@
+---
+source: src/inject_value.rs
+expression: result
+---
+{
+  "kind": "null",
+  "content": {
+    "start": 0,
+    "end": 7
+  }
+}

@@ -1,0 +1,54 @@
+---
+source: src/namespaced.rs
+expression: result
+---
+{
+  "ns": "http://www.springframework.org/schema/jee",
+  "local": "jndi-lookup",
+  "span": {
+    "start": 0,
+    "end": 130
+  },
+  "id": {
+    "value": "dataSource",
+    "span": {
+      "start": 21,
+      "end": 31
+    }
+  },
+  "attrs": [
+    {
+      "key": {
+        "value": "id",
+        "span": {
+          "start": 17,
+          "end": 19
+        }
+      },
+      "value": {
+        "value": "dataSource",
+        "span": {
+          "start": 21,
+          "end": 31
+        }
+      }
+    },
+    {
+      "key": {
+        "value": "jndi-name",
+        "span": {
+          "start": 33,
+          "end": 42
+        }
+      },
+      "value": {
+        "value": "java:comp/env/jdbc/DataSource",
+        "span": {
+          "start": 44,
+          "end": 73
+        }
+      }
+    }
+  ],
+  "refs": []
+}

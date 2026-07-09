@@ -1,0 +1,1 @@
+<beans xmlns:p="http://www.springframework.org/schema/p" xmlns:c="http://www.springframework.org/schema/c"><bean id="widgetService" class="com.example.WidgetService" p:label="Acme Widget" c:_1="x"><property name="other" value="world"/><constructor-arg index="0" value="first"/></bean></beans>

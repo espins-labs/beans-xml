@@ -1,0 +1,68 @@
+---
+source: src/collection.rs
+expression: result
+---
+{
+  "kind": "collection",
+  "content": {
+    "value": {
+      "kind": "list",
+      "content": {
+        "items": [
+          {
+            "kind": "value",
+            "content": {
+              "span": {
+                "start": 36,
+                "end": 52
+              },
+              "text": {
+                "value": "a",
+                "span": {
+                  "start": 43,
+                  "end": 44
+                }
+              },
+              "value_type": null,
+              "placeholders": [],
+              "spel_refs": []
+            }
+          },
+          {
+            "kind": "value",
+            "content": {
+              "span": {
+                "start": 52,
+                "end": 68
+              },
+              "text": {
+                "value": "b",
+                "span": {
+                  "start": 59,
+                  "end": 60
+                }
+              },
+              "value_type": null,
+              "placeholders": [],
+              "spel_refs": []
+            }
+          }
+        ],
+        "value_type": {
+          "value": {
+            "raw": "java.lang.String"
+          },
+          "span": {
+            "start": 18,
+            "end": 34
+          }
+        },
+        "merge": null
+      }
+    },
+    "span": {
+      "start": 0,
+      "end": 75
+    }
+  }
+}

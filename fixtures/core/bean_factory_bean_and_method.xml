@@ -1,0 +1,1 @@
+<beans><bean id="widgetServiceFactory" class="com.example.WidgetServiceFactory"/><bean id="widgetService" factory-bean="widgetServiceFactory" factory-method="createWidgetService"/></beans>

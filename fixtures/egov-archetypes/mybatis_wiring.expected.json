@@ -1,0 +1,273 @@
+{
+  "beans": {
+    "span": {
+      "start": 0,
+      "end": 502
+    },
+    "profile": null,
+    "description": null,
+    "default_lazy_init": null,
+    "default_autowire": null,
+    "default_init_method": null,
+    "default_destroy_method": null,
+    "default_merge": null,
+    "default_autowire_candidates": null,
+    "imports": [],
+    "aliases": [],
+    "beans": [
+      {
+        "span": {
+          "start": 8,
+          "end": 66
+        },
+        "id": {
+          "value": "dataSource",
+          "span": {
+            "start": 18,
+            "end": 28
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.DbcpDataSource"
+          },
+          "span": {
+            "start": 37,
+            "end": 63
+          }
+        },
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [],
+        "constructor_args": [],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      },
+      {
+        "span": {
+          "start": 67,
+          "end": 354
+        },
+        "id": {
+          "value": "sqlSessionFactory",
+          "span": {
+            "start": 77,
+            "end": 94
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.mybatis.SqlSessionFactoryBean"
+          },
+          "span": {
+            "start": 103,
+            "end": 144
+          }
+        },
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [
+          {
+            "span": {
+              "start": 147,
+              "end": 193
+            },
+            "name": {
+              "value": "dataSource",
+              "span": {
+                "start": 163,
+                "end": 173
+              }
+            },
+            "value": {
+              "kind": "ref",
+              "content": {
+                "value": {
+                  "raw": "dataSource",
+                  "kind": "bean"
+                },
+                "span": {
+                  "start": 180,
+                  "end": 190
+                }
+              }
+            },
+            "meta": []
+          },
+          {
+            "span": {
+              "start": 194,
+              "end": 275
+            },
+            "name": {
+              "value": "mapperLocations",
+              "span": {
+                "start": 210,
+                "end": 225
+              }
+            },
+            "value": {
+              "kind": "value",
+              "content": {
+                "span": {
+                  "start": 234,
+                  "end": 272
+                },
+                "text": {
+                  "value": "classpath*:com/example/mapper/**/*.xml",
+                  "span": {
+                    "start": 234,
+                    "end": 272
+                  }
+                },
+                "value_type": null,
+                "placeholders": [],
+                "spel_refs": []
+              }
+            },
+            "meta": []
+          },
+          {
+            "span": {
+              "start": 276,
+              "end": 346
+            },
+            "name": {
+              "value": "configLocation",
+              "span": {
+                "start": 292,
+                "end": 306
+              }
+            },
+            "value": {
+              "kind": "value",
+              "content": {
+                "span": {
+                  "start": 315,
+                  "end": 343
+                },
+                "text": {
+                  "value": "classpath:mybatis-config.xml",
+                  "span": {
+                    "start": 315,
+                    "end": 343
+                  }
+                },
+                "value_type": null,
+                "placeholders": [],
+                "spel_refs": []
+              }
+            },
+            "meta": []
+          }
+        ],
+        "constructor_args": [],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      },
+      {
+        "span": {
+          "start": 355,
+          "end": 493
+        },
+        "id": {
+          "value": "sqlSessionTemplate",
+          "span": {
+            "start": 365,
+            "end": 383
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.mybatis.SqlSessionTemplate"
+          },
+          "span": {
+            "start": 392,
+            "end": 430
+          }
+        },
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [],
+        "constructor_args": [
+          {
+            "span": {
+              "start": 433,
+              "end": 485
+            },
+            "index": 0,
+            "type_ref": null,
+            "name": null,
+            "value": {
+              "kind": "ref",
+              "content": {
+                "value": {
+                  "raw": "sqlSessionFactory",
+                  "kind": "bean"
+                },
+                "span": {
+                  "start": 465,
+                  "end": 482
+                }
+              }
+            },
+            "meta": []
+          }
+        ],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      }
+    ],
+    "component_scans": [],
+    "property_sources": [],
+    "namespaced": [],
+    "nested_profiles": []
+  },
+  "encoding": "UTF-8",
+  "diagnostics": []
+}

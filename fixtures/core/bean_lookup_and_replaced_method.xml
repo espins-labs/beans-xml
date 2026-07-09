@@ -1,0 +1,1 @@
+<beans><bean id="commandProcessor" class="com.example.CommandProcessor"><lookup-method name="createCommand" bean="commandBean"/><replaced-method name="computeValue" replacer="replacerBean"><arg-type match="java.lang.String"/></replaced-method></bean><bean id="commandBean" class="com.example.Command"/><bean id="replacerBean" class="com.example.Replacer"/></beans>

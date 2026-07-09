@@ -1,0 +1,1 @@
+<beans><bean id="dataSource" class="com.example.DataSource"><property name="settings"><props><prop key="driver">com.example.Driver</prop><prop key="url">jdbc:example://localhost/db</prop></props></property></bean></beans>

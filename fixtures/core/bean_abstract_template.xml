@@ -1,0 +1,1 @@
+<beans><bean id="abstractDataSource" abstract="true"><property name="driverClassName" value="com.example.jdbc.Driver"/></bean></beans>

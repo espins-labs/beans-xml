@@ -1,0 +1,147 @@
+{
+  "beans": {
+    "span": {
+      "start": 0,
+      "end": 179
+    },
+    "profile": null,
+    "description": null,
+    "default_lazy_init": null,
+    "default_autowire": null,
+    "default_init_method": null,
+    "default_destroy_method": null,
+    "default_merge": null,
+    "default_autowire_candidates": null,
+    "imports": [],
+    "aliases": [],
+    "beans": [
+      {
+        "span": {
+          "start": 7,
+          "end": 90
+        },
+        "id": {
+          "value": "baseService",
+          "span": {
+            "start": 17,
+            "end": 28
+          }
+        },
+        "names": [],
+        "class": null,
+        "parent": null,
+        "scope": null,
+        "abstract": true,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [
+          {
+            "span": {
+              "start": 46,
+              "end": 83
+            },
+            "name": {
+              "value": "timeout",
+              "span": {
+                "start": 62,
+                "end": 69
+              }
+            },
+            "value": {
+              "kind": "value",
+              "content": {
+                "span": {
+                  "start": 78,
+                  "end": 80
+                },
+                "text": {
+                  "value": "30",
+                  "span": {
+                    "start": 78,
+                    "end": 80
+                  }
+                },
+                "value_type": null,
+                "placeholders": [],
+                "spel_refs": []
+              }
+            },
+            "meta": []
+          }
+        ],
+        "constructor_args": [],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      },
+      {
+        "span": {
+          "start": 90,
+          "end": 171
+        },
+        "id": {
+          "value": "widgetService",
+          "span": {
+            "start": 100,
+            "end": 113
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.WidgetService"
+          },
+          "span": {
+            "start": 143,
+            "end": 168
+          }
+        },
+        "parent": {
+          "value": {
+            "raw": "baseService",
+            "kind": "bean"
+          },
+          "span": {
+            "start": 123,
+            "end": 134
+          }
+        },
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [],
+        "constructor_args": [],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      }
+    ],
+    "component_scans": [],
+    "property_sources": [],
+    "namespaced": [],
+    "nested_profiles": []
+  },
+  "encoding": "UTF-8",
+  "diagnostics": []
+}

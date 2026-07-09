@@ -1,0 +1,17 @@
+---
+source: src/inject_value.rs
+expression: result
+---
+{
+  "kind": "idref",
+  "content": {
+    "value": {
+      "raw": "target",
+      "kind": "local"
+    },
+    "span": {
+      "start": 14,
+      "end": 20
+    }
+  }
+}

@@ -1,0 +1,62 @@
+[workspace]
+members = ["wasm"]
+# Plain `cargo build`/`test`/`check` (no -p/--workspace) still targets only
+# the core crate -- unchanged behavior from before this was a workspace.
+# The wasm crate is built explicitly (`-p beans-xml-wasm` or `wasm-pack`).
+default-members = ["."]
+
+[package]
+name = "beans-xml"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.79"
+authors = ["ESPINS <dlwlalsggg@gmail.com>"]
+description = "Lenient parser for Spring Framework bean XML configuration (the <beans> schema): bean definitions, dependency wiring (ref/property/constructor-arg), <import>, and component-scan. Spring beans — not EJB/JavaBeans/CDI."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/espins-labs/beans-xml"
+keywords = ["spring", "spring-beans", "xml", "dependency-injection", "parser"]
+categories = ["parser-implementations", "config", "development-tools"]
+
+# Leak-safety (spec's fixture corpus section): allowlist packaging (fail-closed). Only these
+# ship in the published .crate — fixtures/ (synthetic but human-authored, max leak
+# surface) and CI/dev plumbing are excluded. (Tradeoff vs batis-xml B11: tests won't
+# run from the published crate source; the never-panic guarantee is exercised in CI.)
+include = [
+    "src/**/*.rs",
+    "schema/**",
+    "README.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "NOTICE",
+]
+
+[package.metadata.docs.rs]
+all-features = true
+
+# wasm constraint: pure-Rust dependencies only (keep wasm32-unknown-unknown clean)
+[dependencies]
+quick-xml = "0.41"
+encoding_rs = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Optional: JSON Schema generation for schema/beans-xml.v1.json. Pure Rust.
+schemars = { version = "0.8", optional = true }
+
+[features]
+schema = ["dep:schemars"]
+
+[dev-dependencies]
+insta = { version = "1", features = ["json"] }
+proptest = "1"
+criterion = { version = "0.5", default-features = false }
+# I5: validates the fixture corpus's serialized JSON against the committed
+# `schema/beans-xml.v1.json` with a real JSON-Schema validator (catches
+# schemars/serde divergence as a test failure, not just a snapshot diff).
+# `default-features = false` drops the `resolve-http`/`resolve-file` remote-
+# $ref machinery (and its `reqwest` pull) this crate's schema never needs --
+# `schema/beans-xml.v1.json` only has local `#/definitions/...` refs.
+jsonschema = { version = "0.33", default-features = false }
+
+[[bench]]
+name = "parse_1mb"
+harness = false

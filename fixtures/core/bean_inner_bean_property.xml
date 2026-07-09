@@ -1,0 +1,1 @@
+<beans><bean id="widgetService" class="com.example.WidgetService"><property name="repository"><bean class="com.example.InMemoryWidgetRepository"/></property></bean></beans>

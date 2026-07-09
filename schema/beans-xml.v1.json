@@ -1,0 +1,1646 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ParseResult",
+  "type": "object",
+  "required": [
+    "diagnostics"
+  ],
+  "properties": {
+    "beans": {
+      "description": "`None` if the document root is not `<beans>` (see `DiagCode::NotBeansRoot`). Invariant #7: `is_beans_doc(b) == parse_bytes(b).beans.is_some()`.",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/BeansFile"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "diagnostics": {
+      "description": "Parsing never fails — every anomaly accumulates here instead.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Diagnostic"
+      }
+    },
+    "encoding": {
+      "description": "Detected encoding as a WHATWG label (`encoding_rs`'s own values, e.g. `\"UTF-8\"`, `\"EUC-KR\"`). `None` only when no decode was attempted at all — input rejected by the raw-byte `MAX_INPUT_BYTES` cap before `parse_bytes` ever decodes it. `parse` (already-decoded `&str` input) always reports `\"UTF-8\"`, the one encoding a Rust `&str` can ever be.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "definitions": {
+    "Alias": {
+      "type": "object",
+      "required": [
+        "alias",
+        "name"
+      ],
+      "properties": {
+        "alias": {
+          "$ref": "#/definitions/Spanned_for_String"
+        },
+        "name": {
+          "$ref": "#/definitions/Spanned_for_String"
+        }
+      }
+    },
+    "AttrPair": {
+      "type": "object",
+      "required": [
+        "key",
+        "value"
+      ],
+      "properties": {
+        "key": {
+          "$ref": "#/definitions/Spanned_for_String"
+        },
+        "value": {
+          "$ref": "#/definitions/Spanned_for_String"
+        }
+      }
+    },
+    "Bean": {
+      "type": "object",
+      "required": [
+        "abstract",
+        "constructor_args",
+        "decorators",
+        "depends_on",
+        "lookup_methods",
+        "meta",
+        "names",
+        "primary",
+        "properties",
+        "qualifiers",
+        "replaced_methods",
+        "span"
+      ],
+      "properties": {
+        "abstract": {
+          "type": "boolean"
+        },
+        "autowire": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_String"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "autowire_candidate": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "class": {
+          "description": "Absent when the class is inherited from `parent`/`factory-bean`.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_ClassRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "constructor_args": {
+          "description": "`<constructor-arg>` children plus `c:`-namespace attributes normalized into the same shape.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ConstructorArg"
+          }
+        },
+        "decorators": {
+          "description": "Namespaced children directly inside `<bean>` (e.g. `<aop:scoped-proxy/>`), preserved bare — same policy as `BeansFile::namespaced`.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/NamespacedElement"
+          }
+        },
+        "depends_on": {
+          "description": "Edges (`RefKind::Bean`).",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Spanned_for_BeanRef"
+          }
+        },
+        "description": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_String"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "destroy_method": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_String"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "factory_bean": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_BeanRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "factory_method": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_String"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_String"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "init_method": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_String"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lazy_init": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "lookup_methods": {
+          "description": "Method injection — each is itself a bean-to-bean edge.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Spanned_for_LookupMethod"
+          }
+        },
+        "meta": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MetaEntry"
+          }
+        },
+        "names": {
+          "description": "`name=\"a, b c\"` alias tokens (comma/semicolon/whitespace-separated) — **`id` is never duplicated into this list**. The effective registered name is `id`, or (when absent) the first token here; the union of `id` and every name here is what a `BeanRef.raw` may match against.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Spanned_for_String"
+          }
+        },
+        "parent": {
+          "description": "Bean-to-bean inheritance edge (`RefKind::Bean`) — distinct from a `<ref parent=\"...\">` inject value, which targets a *parent container*, not a parent bean definition (see `RefKind`).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_BeanRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "primary": {
+          "type": "boolean"
+        },
+        "properties": {
+          "description": "`<property>` children plus `p:`-namespace attributes normalized into the same shape.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Property"
+          }
+        },
+        "qualifiers": {
+          "description": "`<qualifier type= value=>` plus its nested `<attribute>` children.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Qualifier"
+          }
+        },
+        "replaced_methods": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Spanned_for_ReplacedMethod"
+          }
+        },
+        "scope": {
+          "description": "Legacy DTD `singleton=\"true\"/\"false\"` is normalized into this same field (as `\"singleton\"`/`\"prototype\"`), not kept as a separate flag.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_String"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "span": {
+          "description": "Opening tag start → subtree end (or the element's own extent for a self-closed `<bean/>`).",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ByteSpan"
+            }
+          ]
+        }
+      }
+    },
+    "BeanRef": {
+      "type": "object",
+      "required": [
+        "kind",
+        "raw"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/RefKind"
+        },
+        "raw": {
+          "description": "The target name verbatim, exactly as written — resolution (which bean this actually points at, whether it exists at all) is always the consumer's job; this parser has no cross-file view. Invariant #5: never empty (an empty attribute value is reported as a diagnostic instead of producing an empty `raw`).",
+          "type": "string"
+        }
+      }
+    },
+    "BeansFile": {
+      "type": "object",
+      "required": [
+        "aliases",
+        "beans",
+        "component_scans",
+        "imports",
+        "namespaced",
+        "nested_profiles",
+        "property_sources",
+        "span"
+      ],
+      "properties": {
+        "aliases": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Spanned_for_Alias"
+          }
+        },
+        "beans": {
+          "description": "Top-level `<bean>` elements only — an inner (anonymous) `<bean>` lives inside its owning `InjectValue::Inner`, not here.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Bean"
+          }
+        },
+        "component_scans": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Spanned_for_ComponentScan"
+          }
+        },
+        "default_autowire": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_String"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "default_autowire_candidates": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_String"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "default_destroy_method": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_String"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "default_init_method": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_String"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "default_lazy_init": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "default_merge": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "description": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_String"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "imports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Spanned_for_Import"
+          }
+        },
+        "namespaced": {
+          "description": "Non-first-class namespaces (`aop:*`, `tx:*`, `jee:*`, `util:list`, ...) preserved bare — see `NamespacedElement`'s own doc comment for the v0.1 namespace policy.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/NamespacedElement"
+          }
+        },
+        "nested_profiles": {
+          "description": "Nested `<beans profile=\"...\">` blocks (Spring 3.1+). Recursive — parsed via the same root-child dispatch as the top-level document (build plan: \"recursion unification\", `parse_beans_body` is re-entered, never reimplemented), so every field above applies equally inside here.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/BeansFile"
+          }
+        },
+        "profile": {
+          "description": "`<beans profile=\"dev,test\">` — raw comma-separated text, unsplit (splitting/negation (`!prod`) semantics are a consumer concern).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_String"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "property_sources": {
+          "description": "`context:property-placeholder` and `util:properties`.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Spanned_for_PropertySource"
+          }
+        },
+        "span": {
+          "description": "Opening `<beans>` tag start → subtree end.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ByteSpan"
+            }
+          ]
+        }
+      }
+    },
+    "ByteSpan": {
+      "description": "Half-open `[start, end)` offset into the **decoded UTF-8** text this crate produced — *not* the caller's original raw input bytes.\n\nFor UTF-8 input this is identical to raw byte offsets (decoding is a no-op). For any other source encoding (EUC-KR, CP949, UTF-16, ...; see [`ParseResult::encoding`]) decoding changes character byte-widths, so a span here is only valid against the **re-encoded UTF-8** text, not the original file's bytes. To slice the original bytes, decode them the same way this crate did (using the `encoding` label as the anchor) and slice the redecoded string, not the raw input.\n\nA leading byte-order mark is never part of this text at either entry point — `parse_bytes` consumes it during decoding, and `parse` treats its `&str` input as already BOM-free (a caller handing in a string that still carries one is on its own for that byte, same as batis-xml).",
+      "type": "object",
+      "required": [
+        "end",
+        "start"
+      ],
+      "properties": {
+        "end": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "start": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "ClassRef": {
+      "type": "object",
+      "required": [
+        "raw"
+      ],
+      "properties": {
+        "raw": {
+          "description": "The fully-qualified class name verbatim — alias resolution and generic/array-suffix parsing are a consumer's job. Invariant #5: never empty. Deliberately **not** used for `scan-filter` expressions or `<arg-type match=...>` patterns, which are type *patterns*, not necessarily FQNs — those stay plain `String`.",
+          "type": "string"
+        }
+      }
+    },
+    "Collection": {
+      "description": "`#[non_exhaustive]` + adjacently tagged: same forward-compat rationale as `InjectValue` (its sibling in the spec's \"enum policy\"), so a future collection kind never breaks a consumer reading this version's JSON. `Serialize` is derived; `Deserialize` is hand-rolled below (see `InjectValue`'s manual `Deserialize` impl for why).",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "content",
+            "kind"
+          ],
+          "properties": {
+            "content": {
+              "type": "object",
+              "required": [
+                "items"
+              ],
+              "properties": {
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/InjectValue"
+                  }
+                },
+                "merge": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "value_type": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/Spanned_for_ClassRef"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "list"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "content",
+            "kind"
+          ],
+          "properties": {
+            "content": {
+              "type": "object",
+              "required": [
+                "items"
+              ],
+              "properties": {
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/InjectValue"
+                  }
+                },
+                "merge": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "value_type": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/Spanned_for_ClassRef"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "set"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "content",
+            "kind"
+          ],
+          "properties": {
+            "content": {
+              "type": "object",
+              "required": [
+                "items"
+              ],
+              "properties": {
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/InjectValue"
+                  }
+                },
+                "merge": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "value_type": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/Spanned_for_ClassRef"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "array"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "content",
+            "kind"
+          ],
+          "properties": {
+            "content": {
+              "type": "object",
+              "required": [
+                "entries"
+              ],
+              "properties": {
+                "entries": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/MapEntry"
+                  }
+                },
+                "key_type": {
+                  "description": "`<map key-type=\"...\">` — the per-entry `value-type` (when present on an individual `<entry>`) lands on `MapEntry` instead.",
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/Spanned_for_ClassRef"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "merge": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "value_type": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/Spanned_for_ClassRef"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "map"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "content",
+            "kind"
+          ],
+          "properties": {
+            "content": {
+              "type": "object",
+              "required": [
+                "entries"
+              ],
+              "properties": {
+                "entries": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/PropEntry"
+                  }
+                },
+                "merge": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "props"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "ComponentScan": {
+      "type": "object",
+      "required": [
+        "base_packages",
+        "exclude_filters",
+        "include_filters"
+      ],
+      "properties": {
+        "base_packages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Spanned_for_String"
+          }
+        },
+        "exclude_filters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ScanFilter"
+          }
+        },
+        "include_filters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ScanFilter"
+          }
+        },
+        "use_default_filters": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    },
+    "ConstructorArg": {
+      "type": "object",
+      "required": [
+        "meta",
+        "span",
+        "value"
+      ],
+      "properties": {
+        "index": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "meta": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MetaEntry"
+          }
+        },
+        "name": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_String"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "span": {
+          "description": "`<constructor-arg>` element extent, or (for a `c:`-namespace attribute) the attribute's own span.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ByteSpan"
+            }
+          ]
+        },
+        "type_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_ClassRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "value": {
+          "$ref": "#/definitions/InjectValue"
+        }
+      }
+    },
+    "DiagCode": {
+      "description": "`#[non_exhaustive]` + `#[serde(other)]`: additions are pre-approved (see this crate's `AGENTS.md`) and never break a consumer holding an older build's `match` (a wildcard arm is compiler-enforced) or reading a newer version's JSON (an unrecognized code string lands on `Other` instead of failing deserialization). Never produced by this crate's own parser — `Other` exists purely as the deserialization side of this contract.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "encoding_undetectable",
+            "encoding_mismatch",
+            "unclosed_tag",
+            "unexpected_close_tag"
+          ]
+        },
+        {
+          "description": "Recovery rule: first value wins, duplicate is reported here.",
+          "type": "string",
+          "enum": [
+            "duplicate_attribute"
+          ]
+        },
+        {
+          "description": "Document root is not `<beans>`.",
+          "type": "string",
+          "enum": [
+            "not_beans_root"
+          ]
+        },
+        {
+          "description": "Scoped to a single `<beans>` block — a `<beans profile=\"a\">` and a sibling `<beans profile=\"b\">` declaring the same id is a profile override, not a duplicate.",
+          "type": "string",
+          "enum": [
+            "duplicate_bean_id"
+          ]
+        },
+        {
+          "description": "No `class`, `parent`, or `factory-bean` at all — except an `abstract=\"true\"` template bean, which is a legitimate exception.",
+          "type": "string",
+          "enum": [
+            "bean_without_class_or_parent"
+          ]
+        },
+        {
+          "description": "Both `value=` and `ref=` (or their equivalents) present on the same injection point.",
+          "type": "string",
+          "enum": [
+            "conflicting_value_and_ref"
+          ]
+        },
+        {
+          "description": "A reference-shaped element/attribute with no target name (e.g. `<lookup-method>` with no `bean=`).",
+          "type": "string",
+          "enum": [
+            "ref_without_target"
+          ]
+        },
+        {
+          "description": "An unrecognized element inside the first-class `beans` namespace itself (not the same as an out-of-scope *namespace*, which is preserved via `NamespacedElement` instead of flagged here).",
+          "type": "string",
+          "enum": [
+            "unknown_element"
+          ]
+        },
+        {
+          "description": "An entity reference could not be resolved; the raw text is kept as-is for that segment.",
+          "type": "string",
+          "enum": [
+            "invalid_entity"
+          ]
+        },
+        {
+          "description": "A `${`/`#{` placeholder never found its closing delimiter; the raw text is kept as-is.",
+          "type": "string",
+          "enum": [
+            "unterminated_placeholder"
+          ]
+        },
+        {
+          "description": "Recursion depth exceeded [`crate::DEPTH_LIMIT`] nesting levels (nested beans/collections) — the remaining subtree is treated as opaque rather than risking a stack overflow.",
+          "type": "string",
+          "enum": [
+            "nesting_limit_exceeded"
+          ]
+        },
+        {
+          "description": "Input exceeded [`crate::MAX_INPUT_BYTES`], reported before any decoding is attempted.",
+          "type": "string",
+          "enum": [
+            "oversize_input"
+          ]
+        },
+        {
+          "description": "Forward-compat deserialization fallback. See this enum's own doc comment.",
+          "type": "string",
+          "enum": [
+            "other"
+          ]
+        }
+      ]
+    },
+    "Diagnostic": {
+      "type": "object",
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "#/definitions/DiagCode"
+        },
+        "message": {
+          "type": "string"
+        },
+        "span": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ByteSpan"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "Import": {
+      "type": "object",
+      "required": [
+        "kind",
+        "resource"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/ImportKind"
+        },
+        "resource": {
+          "$ref": "#/definitions/Spanned_for_String"
+        }
+      }
+    },
+    "ImportKind": {
+      "description": "Closed set — see `RefKind`'s doc comment for the same rationale. `Url` covers every URL scheme (including `file:`); `Other` is the total fallback for a resource string matching none of the recognized shapes (not a forward-compat mechanism, unlike `DiagCode::Other`).",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "url",
+            "other"
+          ]
+        },
+        {
+          "description": "`classpath:...`.",
+          "type": "string",
+          "enum": [
+            "classpath"
+          ]
+        },
+        {
+          "description": "`classpath*:...`.",
+          "type": "string",
+          "enum": [
+            "classpath_star"
+          ]
+        },
+        {
+          "description": "A bare relative path.",
+          "type": "string",
+          "enum": [
+            "relative"
+          ]
+        }
+      ]
+    },
+    "InjectValue": {
+      "description": "The value injected into a `<property>`, `<constructor-arg>`, collection item, or map entry key/value.\n\n`#[non_exhaustive]` + adjacently tagged (`{\"kind\": ..., \"content\": ...}`): a future beans-xml version may add a variant (e.g. for a v0.2 first-class namespace promotion) without breaking a consumer parsing *this* version's JSON — an unrecognized `kind` string deserializes to `Unrecognized` instead of failing the whole document. `Serialize` is still derived (it produces exactly this shape); `Deserialize` is hand-rolled below — see that impl's doc comment for why derive's own `#[serde(other)]` support doesn't actually give adjacently tagged enums a working fallback once a real variant's `content` is involved.",
+      "oneOf": [
+        {
+          "description": "`ref=\"beanName\"` attribute, or a `<ref bean=/local=/parent=>` child.",
+          "type": "object",
+          "required": [
+            "content",
+            "kind"
+          ],
+          "properties": {
+            "content": {
+              "$ref": "#/definitions/Spanned_for_BeanRef"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "ref"
+              ]
+            }
+          }
+        },
+        {
+          "description": "`<idref bean=/local=>`.",
+          "type": "object",
+          "required": [
+            "content",
+            "kind"
+          ],
+          "properties": {
+            "content": {
+              "$ref": "#/definitions/Spanned_for_BeanRef"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "idref"
+              ]
+            }
+          }
+        },
+        {
+          "description": "A literal — `value=\"...\"` attribute or `<value>` child — including any `${}`/`#{}` expressions found inside it (collected, not evaluated; see `ValueLit`).",
+          "type": "object",
+          "required": [
+            "content",
+            "kind"
+          ],
+          "properties": {
+            "content": {
+              "$ref": "#/definitions/ValueLit"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "value"
+              ]
+            }
+          }
+        },
+        {
+          "description": "An inline anonymous `<bean>`.",
+          "type": "object",
+          "required": [
+            "content",
+            "kind"
+          ],
+          "properties": {
+            "content": {
+              "$ref": "#/definitions/Bean"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "inner"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "content",
+            "kind"
+          ],
+          "properties": {
+            "content": {
+              "$ref": "#/definitions/Spanned_for_Collection"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "collection"
+              ]
+            }
+          }
+        },
+        {
+          "description": "`<null/>`.",
+          "type": "object",
+          "required": [
+            "content",
+            "kind"
+          ],
+          "properties": {
+            "content": {
+              "$ref": "#/definitions/ByteSpan"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "null"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "LookupMethod": {
+      "type": "object",
+      "properties": {
+        "bean": {
+          "description": "`None` when `bean=` is absent — recorded as a `RefWithoutTarget` diagnostic, with the element itself still preserved (no edge is emitted for it).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_BeanRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_String"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "MapEntry": {
+      "type": "object",
+      "required": [
+        "key",
+        "span",
+        "value"
+      ],
+      "properties": {
+        "key": {
+          "description": "From `key=\"...\"`/`key-ref=\"...\"` attribute or a `<key>` child.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/InjectValue"
+            }
+          ]
+        },
+        "span": {
+          "description": "`<entry>` element extent.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ByteSpan"
+            }
+          ]
+        },
+        "value": {
+          "description": "From `value=\"...\"`/`value-ref=\"...\"` attribute or a value child.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/InjectValue"
+            }
+          ]
+        },
+        "value_type": {
+          "description": "Per-entry `<entry value-type=\"...\">` — the map-wide `key-type` lives on `Collection::Map` instead.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_ClassRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "MetaEntry": {
+      "type": "object",
+      "required": [
+        "key",
+        "value"
+      ],
+      "properties": {
+        "key": {
+          "$ref": "#/definitions/Spanned_for_String"
+        },
+        "value": {
+          "$ref": "#/definitions/Spanned_for_String"
+        }
+      }
+    },
+    "NamespacedElement": {
+      "description": "A preserved-but-not-deeply-parsed namespaced element — v0.1's policy for every namespace outside the first-class set (`beans` in full, `context:component-scan`/`context:property-placeholder`, `util:properties`). Covers `util:constant`/`util:list`/..., `aop:*`, `tx:*`, `jee:*`, `jms:*`, `lang:*`, `cache:*`, `task:*`, `mvc:*`, and any `<bean>`-internal decorator (`aop:scoped-proxy`, ...).\n\n`id` matters beyond bookkeeping: an id-bearing namespaced element (`jee:jndi-lookup`, `util:list`, ...) registers a bean the same way a `<bean id=...>` does — without it, a `ref=\"dataSource\"` pointing at a JNDI-backed datasource would otherwise look like a dangling reference. `refs` is populated by recursing into the subtree and collecting only the attributes on the fixed `NS_REF_ALLOWLIST` table (aop `aspect@ref`/`advisor@advice-ref`, tx `advice@transaction-manager`, task `scheduled@ref`/`@scheduler`, jee JNDI references, ...) — this is a bean-to-bean edge collection policy, not a general-purpose attribute walk, and it deliberately excludes some attributes (e.g. aop `pointcut-ref` — a pointcut is not itself a bean).",
+      "type": "object",
+      "required": [
+        "attrs",
+        "local",
+        "ns",
+        "refs",
+        "span"
+      ],
+      "properties": {
+        "attrs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AttrPair"
+          }
+        },
+        "id": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_String"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "local": {
+          "description": "The local (unprefixed) element name.",
+          "type": "string"
+        },
+        "ns": {
+          "description": "The namespace URI (or prefix, if the URI can't be resolved from the document's own declarations) — raw, unresolved.",
+          "type": "string"
+        },
+        "refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Spanned_for_BeanRef"
+          }
+        },
+        "span": {
+          "description": "Element extent (opening tag start → subtree end).",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ByteSpan"
+            }
+          ]
+        }
+      }
+    },
+    "PropEntry": {
+      "type": "object",
+      "required": [
+        "key",
+        "span",
+        "value"
+      ],
+      "properties": {
+        "key": {
+          "$ref": "#/definitions/Spanned_for_String"
+        },
+        "span": {
+          "description": "`<prop key=\"...\">` element extent.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ByteSpan"
+            }
+          ]
+        },
+        "value": {
+          "$ref": "#/definitions/ValueLit"
+        }
+      }
+    },
+    "Property": {
+      "type": "object",
+      "required": [
+        "meta",
+        "name",
+        "span",
+        "value"
+      ],
+      "properties": {
+        "meta": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MetaEntry"
+          }
+        },
+        "name": {
+          "$ref": "#/definitions/Spanned_for_String"
+        },
+        "span": {
+          "description": "`<property>` element extent, or (for a `p:`-namespace attribute) the attribute's own span.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ByteSpan"
+            }
+          ]
+        },
+        "value": {
+          "$ref": "#/definitions/InjectValue"
+        }
+      }
+    },
+    "PropertySource": {
+      "oneOf": [
+        {
+          "description": "`context:property-placeholder`.",
+          "type": "object",
+          "required": [
+            "placeholder"
+          ],
+          "properties": {
+            "placeholder": {
+              "type": "object",
+              "required": [
+                "locations"
+              ],
+              "properties": {
+                "locations": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/Spanned_for_String"
+                  }
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "`util:properties` — `id` (when present) registers a bean, so it is a valid `ref=` target the same way any other bean id is.",
+          "type": "object",
+          "required": [
+            "properties"
+          ],
+          "properties": {
+            "properties": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/Spanned_for_String"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "location": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/Spanned_for_String"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Qualifier": {
+      "type": "object",
+      "required": [
+        "attributes",
+        "span"
+      ],
+      "properties": {
+        "attributes": {
+          "description": "Nested `<attribute key= value=>` children.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AttrPair"
+          }
+        },
+        "span": {
+          "$ref": "#/definitions/ByteSpan"
+        },
+        "type": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_ClassRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "value": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_String"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "RefKind": {
+      "description": "Closed set — an exhaustive `match` is a consumer feature, unlike `InjectValue`/`Collection`/`DiagCode`. There is no third kind of bean-reference target; a genuinely new one would be a v2 concern.",
+      "oneOf": [
+        {
+          "description": "`ref=`/`bean=` attribute, or `parent=`/`depends-on=`/`factory-bean=` — all resolve within the *same* bean container.",
+          "type": "string",
+          "enum": [
+            "bean"
+          ]
+        },
+        {
+          "description": "`<ref local=\"x\">` — legacy same-file-only reference.",
+          "type": "string",
+          "enum": [
+            "local"
+          ]
+        },
+        {
+          "description": "`<ref parent=\"x\">` — targets a *parent container* (an ancestor `BeanFactory`/`ApplicationContext`), unrelated to a bean definition's own `parent=` inheritance attribute (which is `RefKind::Bean`).",
+          "type": "string",
+          "enum": [
+            "parent_container"
+          ]
+        }
+      ]
+    },
+    "ReplacedMethod": {
+      "type": "object",
+      "required": [
+        "arg_types",
+        "name"
+      ],
+      "properties": {
+        "arg_types": {
+          "description": "`<arg-type match=\"...\">` values, or (arg-type text-content ruling: Spring also accepts this form) the trimmed text-content of an `<arg-type>` that has no non-whitespace `match=` — `match=` wins only when it has non-whitespace text, same as real Spring's own `StringUtils.hasText` precedence (a present-but-empty or whitespace-only `match=` falls back to the text body instead of being recorded as-is). Either way this is a type-*match* pattern, not a fully-qualified class name, so these are plain strings rather than `ClassRef` (see `ClassRef`'s own doc comment on that exclusion).",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Spanned_for_String"
+          }
+        },
+        "name": {
+          "$ref": "#/definitions/Spanned_for_String"
+        },
+        "replacer": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_BeanRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "ScanFilter": {
+      "type": "object",
+      "required": [
+        "expression",
+        "filter_type"
+      ],
+      "properties": {
+        "expression": {
+          "description": "The filter pattern/expression — kept as a plain string (not `ClassRef`) since it may be an annotation FQN, a regex, or an AspectJ pointcut depending on `filter_type`, not always a class name (see `ClassRef`'s exclusion list).",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_String"
+            }
+          ]
+        },
+        "filter_type": {
+          "$ref": "#/definitions/Spanned_for_String"
+        }
+      }
+    },
+    "Spanned_for_Alias": {
+      "description": "A value plus the span of the source text it was read from.\n\nUsed for every field whose owning struct/enum has no `span` field of its own. Types that *do* carry an own `span: ByteSpan` field (`Bean`, `ValueLit`, `MapEntry`, `PropEntry`, `NamespacedElement`, `Property`, `ConstructorArg`, `Qualifier`, ...) are never additionally wrapped in `Spanned<T>` at their use sites — invariant #2 (see the spec) calls this \"self-span\": exactly one span per located node, never two.",
+      "type": "object",
+      "required": [
+        "span",
+        "value"
+      ],
+      "properties": {
+        "span": {
+          "$ref": "#/definitions/ByteSpan"
+        },
+        "value": {
+          "$ref": "#/definitions/Alias"
+        }
+      }
+    },
+    "Spanned_for_BeanRef": {
+      "description": "A value plus the span of the source text it was read from.\n\nUsed for every field whose owning struct/enum has no `span` field of its own. Types that *do* carry an own `span: ByteSpan` field (`Bean`, `ValueLit`, `MapEntry`, `PropEntry`, `NamespacedElement`, `Property`, `ConstructorArg`, `Qualifier`, ...) are never additionally wrapped in `Spanned<T>` at their use sites — invariant #2 (see the spec) calls this \"self-span\": exactly one span per located node, never two.",
+      "type": "object",
+      "required": [
+        "span",
+        "value"
+      ],
+      "properties": {
+        "span": {
+          "$ref": "#/definitions/ByteSpan"
+        },
+        "value": {
+          "$ref": "#/definitions/BeanRef"
+        }
+      }
+    },
+    "Spanned_for_ClassRef": {
+      "description": "A value plus the span of the source text it was read from.\n\nUsed for every field whose owning struct/enum has no `span` field of its own. Types that *do* carry an own `span: ByteSpan` field (`Bean`, `ValueLit`, `MapEntry`, `PropEntry`, `NamespacedElement`, `Property`, `ConstructorArg`, `Qualifier`, ...) are never additionally wrapped in `Spanned<T>` at their use sites — invariant #2 (see the spec) calls this \"self-span\": exactly one span per located node, never two.",
+      "type": "object",
+      "required": [
+        "span",
+        "value"
+      ],
+      "properties": {
+        "span": {
+          "$ref": "#/definitions/ByteSpan"
+        },
+        "value": {
+          "$ref": "#/definitions/ClassRef"
+        }
+      }
+    },
+    "Spanned_for_Collection": {
+      "description": "A value plus the span of the source text it was read from.\n\nUsed for every field whose owning struct/enum has no `span` field of its own. Types that *do* carry an own `span: ByteSpan` field (`Bean`, `ValueLit`, `MapEntry`, `PropEntry`, `NamespacedElement`, `Property`, `ConstructorArg`, `Qualifier`, ...) are never additionally wrapped in `Spanned<T>` at their use sites — invariant #2 (see the spec) calls this \"self-span\": exactly one span per located node, never two.",
+      "type": "object",
+      "required": [
+        "span",
+        "value"
+      ],
+      "properties": {
+        "span": {
+          "$ref": "#/definitions/ByteSpan"
+        },
+        "value": {
+          "$ref": "#/definitions/Collection"
+        }
+      }
+    },
+    "Spanned_for_ComponentScan": {
+      "description": "A value plus the span of the source text it was read from.\n\nUsed for every field whose owning struct/enum has no `span` field of its own. Types that *do* carry an own `span: ByteSpan` field (`Bean`, `ValueLit`, `MapEntry`, `PropEntry`, `NamespacedElement`, `Property`, `ConstructorArg`, `Qualifier`, ...) are never additionally wrapped in `Spanned<T>` at their use sites — invariant #2 (see the spec) calls this \"self-span\": exactly one span per located node, never two.",
+      "type": "object",
+      "required": [
+        "span",
+        "value"
+      ],
+      "properties": {
+        "span": {
+          "$ref": "#/definitions/ByteSpan"
+        },
+        "value": {
+          "$ref": "#/definitions/ComponentScan"
+        }
+      }
+    },
+    "Spanned_for_Import": {
+      "description": "A value plus the span of the source text it was read from.\n\nUsed for every field whose owning struct/enum has no `span` field of its own. Types that *do* carry an own `span: ByteSpan` field (`Bean`, `ValueLit`, `MapEntry`, `PropEntry`, `NamespacedElement`, `Property`, `ConstructorArg`, `Qualifier`, ...) are never additionally wrapped in `Spanned<T>` at their use sites — invariant #2 (see the spec) calls this \"self-span\": exactly one span per located node, never two.",
+      "type": "object",
+      "required": [
+        "span",
+        "value"
+      ],
+      "properties": {
+        "span": {
+          "$ref": "#/definitions/ByteSpan"
+        },
+        "value": {
+          "$ref": "#/definitions/Import"
+        }
+      }
+    },
+    "Spanned_for_LookupMethod": {
+      "description": "A value plus the span of the source text it was read from.\n\nUsed for every field whose owning struct/enum has no `span` field of its own. Types that *do* carry an own `span: ByteSpan` field (`Bean`, `ValueLit`, `MapEntry`, `PropEntry`, `NamespacedElement`, `Property`, `ConstructorArg`, `Qualifier`, ...) are never additionally wrapped in `Spanned<T>` at their use sites — invariant #2 (see the spec) calls this \"self-span\": exactly one span per located node, never two.",
+      "type": "object",
+      "required": [
+        "span",
+        "value"
+      ],
+      "properties": {
+        "span": {
+          "$ref": "#/definitions/ByteSpan"
+        },
+        "value": {
+          "$ref": "#/definitions/LookupMethod"
+        }
+      }
+    },
+    "Spanned_for_PropertySource": {
+      "description": "A value plus the span of the source text it was read from.\n\nUsed for every field whose owning struct/enum has no `span` field of its own. Types that *do* carry an own `span: ByteSpan` field (`Bean`, `ValueLit`, `MapEntry`, `PropEntry`, `NamespacedElement`, `Property`, `ConstructorArg`, `Qualifier`, ...) are never additionally wrapped in `Spanned<T>` at their use sites — invariant #2 (see the spec) calls this \"self-span\": exactly one span per located node, never two.",
+      "type": "object",
+      "required": [
+        "span",
+        "value"
+      ],
+      "properties": {
+        "span": {
+          "$ref": "#/definitions/ByteSpan"
+        },
+        "value": {
+          "$ref": "#/definitions/PropertySource"
+        }
+      }
+    },
+    "Spanned_for_ReplacedMethod": {
+      "description": "A value plus the span of the source text it was read from.\n\nUsed for every field whose owning struct/enum has no `span` field of its own. Types that *do* carry an own `span: ByteSpan` field (`Bean`, `ValueLit`, `MapEntry`, `PropEntry`, `NamespacedElement`, `Property`, `ConstructorArg`, `Qualifier`, ...) are never additionally wrapped in `Spanned<T>` at their use sites — invariant #2 (see the spec) calls this \"self-span\": exactly one span per located node, never two.",
+      "type": "object",
+      "required": [
+        "span",
+        "value"
+      ],
+      "properties": {
+        "span": {
+          "$ref": "#/definitions/ByteSpan"
+        },
+        "value": {
+          "$ref": "#/definitions/ReplacedMethod"
+        }
+      }
+    },
+    "Spanned_for_String": {
+      "description": "A value plus the span of the source text it was read from.\n\nUsed for every field whose owning struct/enum has no `span` field of its own. Types that *do* carry an own `span: ByteSpan` field (`Bean`, `ValueLit`, `MapEntry`, `PropEntry`, `NamespacedElement`, `Property`, `ConstructorArg`, `Qualifier`, ...) are never additionally wrapped in `Spanned<T>` at their use sites — invariant #2 (see the spec) calls this \"self-span\": exactly one span per located node, never two.",
+      "type": "object",
+      "required": [
+        "span",
+        "value"
+      ],
+      "properties": {
+        "span": {
+          "$ref": "#/definitions/ByteSpan"
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "ValueLit": {
+      "type": "object",
+      "required": [
+        "placeholders",
+        "span",
+        "spel_refs",
+        "text"
+      ],
+      "properties": {
+        "placeholders": {
+          "description": "`${prop.key}` placeholder keys found inside `text` (collected, not evaluated).",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Spanned_for_String"
+          }
+        },
+        "span": {
+          "$ref": "#/definitions/ByteSpan"
+        },
+        "spel_refs": {
+          "description": "`#{beanName...}` SpEL bean-reference *candidates* found inside `text` — the single collection path for SpEL bean references (see the spec's \"references are raw only\" decision); not a full SpEL evaluator.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Spanned_for_String"
+          }
+        },
+        "text": {
+          "$ref": "#/definitions/Spanned_for_String"
+        },
+        "value_type": {
+          "description": "`<value type=\"java.lang.Integer\">`.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Spanned_for_ClassRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

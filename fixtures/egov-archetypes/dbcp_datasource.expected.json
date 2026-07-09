@@ -1,0 +1,282 @@
+{
+  "beans": {
+    "span": {
+      "start": 0,
+      "end": 420
+    },
+    "profile": null,
+    "description": null,
+    "default_lazy_init": null,
+    "default_autowire": null,
+    "default_init_method": null,
+    "default_destroy_method": null,
+    "default_merge": null,
+    "default_autowire_candidates": null,
+    "imports": [],
+    "aliases": [],
+    "beans": [
+      {
+        "span": {
+          "start": 8,
+          "end": 411
+        },
+        "id": {
+          "value": "dataSource",
+          "span": {
+            "start": 18,
+            "end": 28
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.dbcp.BasicDataSource"
+          },
+          "span": {
+            "start": 37,
+            "end": 69
+          }
+        },
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": {
+          "value": "close",
+          "span": {
+            "start": 87,
+            "end": 92
+          }
+        },
+        "properties": [
+          {
+            "span": {
+              "start": 95,
+              "end": 161
+            },
+            "name": {
+              "value": "driverClassName",
+              "span": {
+                "start": 111,
+                "end": 126
+              }
+            },
+            "value": {
+              "kind": "value",
+              "content": {
+                "span": {
+                  "start": 135,
+                  "end": 158
+                },
+                "text": {
+                  "value": "com.example.jdbc.Driver",
+                  "span": {
+                    "start": 135,
+                    "end": 158
+                  }
+                },
+                "value_type": null,
+                "placeholders": [],
+                "spel_refs": []
+              }
+            },
+            "meta": []
+          },
+          {
+            "span": {
+              "start": 162,
+              "end": 228
+            },
+            "name": {
+              "value": "url",
+              "span": {
+                "start": 178,
+                "end": 181
+              }
+            },
+            "value": {
+              "kind": "value",
+              "content": {
+                "span": {
+                  "start": 190,
+                  "end": 225
+                },
+                "text": {
+                  "value": "jdbc:example://localhost:5432/appdb",
+                  "span": {
+                    "start": 190,
+                    "end": 225
+                  }
+                },
+                "value_type": null,
+                "placeholders": [],
+                "spel_refs": []
+              }
+            },
+            "meta": []
+          },
+          {
+            "span": {
+              "start": 229,
+              "end": 272
+            },
+            "name": {
+              "value": "username",
+              "span": {
+                "start": 245,
+                "end": 253
+              }
+            },
+            "value": {
+              "kind": "value",
+              "content": {
+                "span": {
+                  "start": 262,
+                  "end": 269
+                },
+                "text": {
+                  "value": "appuser",
+                  "span": {
+                    "start": 262,
+                    "end": 269
+                  }
+                },
+                "value_type": null,
+                "placeholders": [],
+                "spel_refs": []
+              }
+            },
+            "meta": []
+          },
+          {
+            "span": {
+              "start": 273,
+              "end": 323
+            },
+            "name": {
+              "value": "password",
+              "span": {
+                "start": 289,
+                "end": 297
+              }
+            },
+            "value": {
+              "kind": "value",
+              "content": {
+                "span": {
+                  "start": 306,
+                  "end": 320
+                },
+                "text": {
+                  "value": "${db.password}",
+                  "span": {
+                    "start": 306,
+                    "end": 320
+                  }
+                },
+                "value_type": null,
+                "placeholders": [
+                  {
+                    "value": "db.password",
+                    "span": {
+                      "start": 308,
+                      "end": 319
+                    }
+                  }
+                ],
+                "spel_refs": []
+              }
+            },
+            "meta": []
+          },
+          {
+            "span": {
+              "start": 324,
+              "end": 364
+            },
+            "name": {
+              "value": "initialSize",
+              "span": {
+                "start": 340,
+                "end": 351
+              }
+            },
+            "value": {
+              "kind": "value",
+              "content": {
+                "span": {
+                  "start": 360,
+                  "end": 361
+                },
+                "text": {
+                  "value": "5",
+                  "span": {
+                    "start": 360,
+                    "end": 361
+                  }
+                },
+                "value_type": null,
+                "placeholders": [],
+                "spel_refs": []
+              }
+            },
+            "meta": []
+          },
+          {
+            "span": {
+              "start": 365,
+              "end": 403
+            },
+            "name": {
+              "value": "maxTotal",
+              "span": {
+                "start": 381,
+                "end": 389
+              }
+            },
+            "value": {
+              "kind": "value",
+              "content": {
+                "span": {
+                  "start": 398,
+                  "end": 400
+                },
+                "text": {
+                  "value": "20",
+                  "span": {
+                    "start": 398,
+                    "end": 400
+                  }
+                },
+                "value_type": null,
+                "placeholders": [],
+                "spel_refs": []
+              }
+            },
+            "meta": []
+          }
+        ],
+        "constructor_args": [],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      }
+    ],
+    "component_scans": [],
+    "property_sources": [],
+    "namespaced": [],
+    "nested_profiles": []
+  },
+  "encoding": "UTF-8",
+  "diagnostics": []
+}

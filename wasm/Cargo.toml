@@ -1,0 +1,25 @@
+[package]
+name = "beans-xml-wasm"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.79"
+authors = ["ESPINS <dlwlalsggg@gmail.com>"]
+description = "WebAssembly bindings for beans-xml (Spring Framework <beans> XML parser)"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/espins-labs/beans-xml"
+# Distributed via npm (wasm-pack), not crates.io.
+publish = false
+keywords = ["spring", "spring-beans", "wasm", "parser"]
+categories = ["wasm"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+beans-xml = { path = "..", version = "0.1.0" }
+serde_json = "1"
+wasm-bindgen = "0.2"
+# batis-xml sibling pattern (A16 cold code review): js-sys::Uint8Array/TypeError
+# for validating that parse()/is_beans_doc() actually received a Uint8Array/
+# Buffer, not silently coercing a string/number/null into meaningless bytes.
+js-sys = "0.3"

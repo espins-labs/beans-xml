@@ -1,0 +1,112 @@
+{
+  "beans": {
+    "span": {
+      "start": 0,
+      "end": 128
+    },
+    "profile": null,
+    "description": null,
+    "default_lazy_init": null,
+    "default_autowire": null,
+    "default_init_method": null,
+    "default_destroy_method": null,
+    "default_merge": null,
+    "default_autowire_candidates": null,
+    "imports": [],
+    "aliases": [],
+    "beans": [
+      {
+        "span": {
+          "start": 7,
+          "end": 120
+        },
+        "id": {
+          "value": "widgetService",
+          "span": {
+            "start": 17,
+            "end": 30
+          }
+        },
+        "names": [],
+        "class": {
+          "value": {
+            "raw": "com.example.WidgetService"
+          },
+          "span": {
+            "start": 39,
+            "end": 64
+          }
+        },
+        "parent": null,
+        "scope": null,
+        "abstract": false,
+        "lazy_init": null,
+        "primary": false,
+        "autowire": null,
+        "autowire_candidate": null,
+        "depends_on": [],
+        "factory_bean": null,
+        "factory_method": null,
+        "init_method": null,
+        "destroy_method": null,
+        "properties": [
+          {
+            "span": {
+              "start": 66,
+              "end": 113
+            },
+            "name": {
+              "value": "label",
+              "span": {
+                "start": 82,
+                "end": 87
+              }
+            },
+            "value": {
+              "kind": "value",
+              "content": {
+                "span": {
+                  "start": 96,
+                  "end": 110
+                },
+                "text": {
+                  "value": "${unterminated",
+                  "span": {
+                    "start": 96,
+                    "end": 110
+                  }
+                },
+                "value_type": null,
+                "placeholders": [],
+                "spel_refs": []
+              }
+            },
+            "meta": []
+          }
+        ],
+        "constructor_args": [],
+        "lookup_methods": [],
+        "replaced_methods": [],
+        "qualifiers": [],
+        "decorators": [],
+        "description": null,
+        "meta": []
+      }
+    ],
+    "component_scans": [],
+    "property_sources": [],
+    "namespaced": [],
+    "nested_profiles": []
+  },
+  "encoding": "UTF-8",
+  "diagnostics": [
+    {
+      "code": "unterminated_placeholder",
+      "span": {
+        "start": 96,
+        "end": 110
+      },
+      "message": "'${' placeholder is missing its closing '}'; kept as literal text"
+    }
+  ]
+}

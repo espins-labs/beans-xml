@@ -1,0 +1,1 @@
+<beans><bean id="widgetService" class="com.example.WidgetService"><property name="repository"><ref local="widgetRepository"/></property><property name="parentContext"><ref parent="parentBeanFactory"/></property></bean><bean id="widgetRepository" class="com.example.WidgetRepository"/></beans>

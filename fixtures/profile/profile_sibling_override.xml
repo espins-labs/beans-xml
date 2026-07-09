@@ -1,0 +1,1 @@
+<beans><beans profile="dev"><bean id="dataSource" class="com.example.DevDataSource"/></beans><beans profile="test"><bean id="dataSource" class="com.example.TestDataSource"/></beans></beans>

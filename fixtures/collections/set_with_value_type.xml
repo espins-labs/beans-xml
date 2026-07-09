@@ -1,0 +1,1 @@
+<beans><bean id="widgetService" class="com.example.WidgetService"><property name="tags"><set value-type="java.lang.String"><value>alpha</value><value>beta</value></set></property></bean></beans>
