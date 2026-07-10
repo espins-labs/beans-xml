@@ -294,41 +294,39 @@ pub(crate) fn element_text(element: &XmlElement) -> Spanned<String> {
 /// empty (but still valid) `BeansFileCtx` — the subtree beyond the limit is
 /// dropped rather than walked, same "opaque" treatment those other walkers
 /// give their own over-limit subtrees.
+///
+/// **Stack-diet note** (I3 P0 Windows `STATUS_STACK_OVERFLOW` fix):
+/// `BeansFileCtx` is ~376 bytes (many `Vec`/`Option<Spanned<_>>` fields) —
+/// large enough that, held by value in every frame of the
+/// `parse_beans_body` → `dispatch_root_child` → `parse_nested_beans` →
+/// `parse_beans_body` recursion cycle, `DEPTH_LIMIT` (256) levels of nested
+/// `<beans profile="...">` blocks blew a 256 KiB thread stack well before
+/// the guard fired (`tests/i3_hostile_proptest.rs`'s `deep_profile`
+/// fixture). Same two-part fix as `bean::parse_bean`'s own matching doc
+/// comment: `ctx` is heap-allocated (`Box<BeansFileCtx>`) instead of living
+/// in this frame, and this function returns `Box<BeansFileCtx>` (its two
+/// call sites — `parse_nested_beans` below, `lib.rs`'s top-level call — each
+/// just call `.into_beans_file()` on it same as before; `Box` derefs
+/// transparently). The `NestingLimitExceeded` early-return and the header
+/// attribute reads are both factored into `#[inline(never)]` helpers below
+/// for the same reason `bean::parse_bean`'s doc comment gives: a helper's
+/// own locals/`format!` temporaries live in *that helper's own* stack
+/// frame, fully popped before this function's own recursive descent begins
+/// — left inline, an unoptimized (`-O0`) frame reserves stack for them on
+/// every one of `DEPTH_LIMIT` nested levels simultaneously, not just once.
 pub(crate) fn parse_beans_body(
     scope: &NsScope,
     element: &XmlElement,
     diagnostics: &mut Vec<Diagnostic>,
     depth: u32,
-) -> BeansFileCtx {
+) -> Box<BeansFileCtx> {
     if depth >= crate::DEPTH_LIMIT {
-        diagnostics.push(Diagnostic {
-            code: DiagCode::NestingLimitExceeded,
-            span: Some(element.span),
-            message: format!(
-                "<beans> nesting exceeded {} levels; subtree treated as opaque",
-                crate::DEPTH_LIMIT
-            ),
-        });
-        return BeansFileCtx {
-            span: element.span,
-            ..Default::default()
-        };
+        return nesting_limit_exceeded_beans_ctx(element, diagnostics);
     }
 
-    let mut ctx = BeansFileCtx {
-        span: element.span,
-        ..Default::default()
-    };
+    let mut ctx = new_beans_file_ctx(element.span);
 
-    ctx.profile = find_attr(&element.attrs, "profile").map(spanned_attr);
-    ctx.default_lazy_init = find_bool_attr(&element.attrs, "default-lazy-init");
-    ctx.default_autowire = find_attr(&element.attrs, "default-autowire").map(spanned_attr);
-    ctx.default_init_method = find_attr(&element.attrs, "default-init-method").map(spanned_attr);
-    ctx.default_destroy_method =
-        find_attr(&element.attrs, "default-destroy-method").map(spanned_attr);
-    ctx.default_merge = find_bool_attr(&element.attrs, "default-merge");
-    ctx.default_autowire_candidates =
-        find_attr(&element.attrs, "default-autowire-candidates").map(spanned_attr);
+    populate_beans_header_attrs(&mut ctx, element);
 
     for child in &element.children {
         if let XmlNode::Element(child_element) = child {
@@ -340,6 +338,59 @@ pub(crate) fn parse_beans_body(
     }
 
     ctx
+}
+
+/// `Box::new(BeansFileCtx::default())` plus the one field ([`ByteSpan`])
+/// known up front — split out of [`parse_beans_body`] purely for
+/// stack-diet framing, same `-O0` `Box::new(f())` non-fusion rationale
+/// `bean::new_bean_ctx`'s own doc comment gives (confirmed empirically for
+/// that sibling case via `otool -tv` disassembly of a debug build).
+#[inline(never)]
+fn new_beans_file_ctx(span: ByteSpan) -> Box<BeansFileCtx> {
+    let mut ctx = Box::new(BeansFileCtx::default());
+    ctx.span = span;
+    ctx
+}
+
+/// [`DiagCode::NestingLimitExceeded`] early-return path for
+/// [`parse_beans_body`] — split out purely for stack-diet framing (see that
+/// function's own doc comment): `format!`'s own temporaries would otherwise
+/// sit in every recursive call's frame even on the (overwhelmingly common)
+/// path that never hits the limit.
+#[inline(never)]
+#[cold]
+fn nesting_limit_exceeded_beans_ctx(
+    element: &XmlElement,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Box<BeansFileCtx> {
+    diagnostics.push(Diagnostic {
+        code: DiagCode::NestingLimitExceeded,
+        span: Some(element.span),
+        message: format!(
+            "<beans> nesting exceeded {} levels; subtree treated as opaque",
+            crate::DEPTH_LIMIT
+        ),
+    });
+    Box::new(BeansFileCtx {
+        span: element.span,
+        ..Default::default()
+    })
+}
+
+/// `<beans profile="..." default-*="...">` header attributes — split out of
+/// [`parse_beans_body`] purely for stack-diet framing (see that function's
+/// own doc comment); no behavior change from when this was inline there.
+#[inline(never)]
+fn populate_beans_header_attrs(ctx: &mut BeansFileCtx, element: &XmlElement) {
+    ctx.profile = find_attr(&element.attrs, "profile").map(spanned_attr);
+    ctx.default_lazy_init = find_bool_attr(&element.attrs, "default-lazy-init");
+    ctx.default_autowire = find_attr(&element.attrs, "default-autowire").map(spanned_attr);
+    ctx.default_init_method = find_attr(&element.attrs, "default-init-method").map(spanned_attr);
+    ctx.default_destroy_method =
+        find_attr(&element.attrs, "default-destroy-method").map(spanned_attr);
+    ctx.default_merge = find_bool_attr(&element.attrs, "default-merge");
+    ctx.default_autowire_candidates =
+        find_attr(&element.attrs, "default-autowire-candidates").map(spanned_attr);
 }
 
 // ---------------------------------------------------------------------
@@ -373,75 +424,107 @@ fn dispatch_root_child(
     // name (see that function's doc comment) — so the same rule is applied
     // here for consistency.
     let child_scope = NsScope::from_element(child, Some(scope));
-    let (ns, local) = resolve_qname(&child.name, &child_scope);
-    match local.as_str() {
-        "description" if is_beans_ns(&ns) => {
+    // Kept as one `qn: (String, String)` binding rather than destructured
+    // `let (ns, local) = ..` — stack-diet micro-optimization, see
+    // `property::parse_property`'s own matching comment for the empirical
+    // (MIR-dump-confirmed) rationale: destructuring adds a second copy on
+    // top of the tuple's own temporary at `-O0`.
+    let qn = resolve_qname(&child.name, &child_scope);
+    match qn.1.as_str() {
+        "description" if is_beans_ns(&qn.0) => {
             // SB-01 core (this unit), not a leaf stub: the header's own
             // `<description>` child element.
             ctx.description = Some(element_text(child));
         }
-        "import" if is_beans_ns(&ns) => parse_import(ctx, diagnostics, scope, child),
-        "alias" if is_beans_ns(&ns) => parse_alias(ctx, diagnostics, scope, child),
-        "bean" if is_beans_ns(&ns) => {
-            // U4's real wiring: `<bean>` parsing itself (and the
-            // bean-child dispatch skeleton around it) is entirely U4's
-            // contract (`crate::bean::parse_bean`, build plan U4 row) —
-            // this arm only calls into it and applies the one policy that
-            // belongs at *this* level, not `parse_bean`'s: `DuplicateBeanId`
-            // is scoped to a single `<beans>` block (this `ctx.beans`,
-            // spec's `DuplicateBeanId` doc comment), which `parse_bean`
-            // itself has no visibility into — it only ever sees one
-            // `<bean>` element at a time, never its siblings.
-            let bean = crate::bean::parse_bean(scope, child, diagnostics, 0);
-            if let Some(id) = bean.id.as_ref() {
-                let is_duplicate = ctx.beans.iter().any(|existing| {
-                    existing.id.as_ref().map(|e| e.value.as_str()) == Some(id.value.as_str())
-                });
-                if is_duplicate {
-                    diagnostics.push(Diagnostic {
-                        code: DiagCode::DuplicateBeanId,
-                        span: Some(id.span),
-                        message: format!(
-                            "duplicate bean id '{}' within this <beans> block",
-                            id.value
-                        ),
-                    });
-                }
-            }
-            // Both beans are preserved either way (spec's edge-case table:
-            // "duplicate id (both kept + diagnostic)") — the diagnostic is additive, never a
-            // reason to drop one.
-            ctx.beans.push(bean);
-        }
-        "beans" if is_beans_ns(&ns) => parse_nested_beans(ctx, diagnostics, scope, child, depth),
-        "component-scan" if is_context_ns(&ns) => {
+        "import" if is_beans_ns(&qn.0) => parse_import(ctx, diagnostics, scope, child),
+        "alias" if is_beans_ns(&qn.0) => parse_alias(ctx, diagnostics, scope, child),
+        // U4's real wiring: `<bean>` parsing itself (and the bean-child
+        // dispatch skeleton around it) is entirely U4's contract
+        // (`crate::bean::parse_bean`, build plan U4 row). Factored into
+        // `dispatch_bean_element` below (`#[inline(never)]`) rather than
+        // inline here purely for stack-diet framing (I3 P0 fix, see
+        // `bean::parse_bean`'s own doc comment for the full rationale): its
+        // `DuplicateBeanId` bookkeeping has real locals of its own
+        // (`format!`'s own temporaries in particular), and at `-O0` an
+        // unoptimized frame reserves stack for every local declared
+        // anywhere in a function regardless of which `match` arm actually
+        // ran — leaving this inline would bloat *every* call to
+        // `dispatch_root_child`, including the `"beans"` arm just below,
+        // which is the one actually on the `<beans>`-in-`<beans>` recursive
+        // chain `tests/i3_hostile_proptest.rs`'s `deep_profile` fixture
+        // stresses, for no benefit.
+        "bean" if is_beans_ns(&qn.0) => dispatch_bean_element(ctx, diagnostics, scope, child),
+        "beans" if is_beans_ns(&qn.0) => parse_nested_beans(ctx, diagnostics, scope, child, depth),
+        "component-scan" if is_context_ns(&qn.0) => {
             parse_component_scan(ctx, diagnostics, scope, child)
         }
-        "property-placeholder" if is_context_ns(&ns) => {
+        "property-placeholder" if is_context_ns(&qn.0) => {
             parse_property_source(ctx, diagnostics, scope, child)
         }
-        "properties" if is_util_ns(&ns) => parse_property_source(ctx, diagnostics, scope, child),
+        "properties" if is_util_ns(&qn.0) => parse_property_source(ctx, diagnostics, scope, child),
         // An element inside the first-class `beans` namespace itself that
         // isn't one of the recognized names above (a typo, a future
         // element this build doesn't know yet, ...) — `UnknownElement`,
         // per that `DiagCode` variant's own doc comment distinguishing it
         // from an out-of-scope *namespace* (which goes to
         // `NamespacedElement` instead, never here).
-        _ if is_beans_ns(&ns) => {
-            diagnostics.push(Diagnostic {
-                code: DiagCode::UnknownElement,
-                span: Some(child.span),
-                message: format!(
-                    "unrecognized element <{}> inside the beans namespace",
-                    child.name
-                ),
-            });
-        }
+        _ if is_beans_ns(&qn.0) => push_unknown_element(diagnostics, child),
         // NamespacedElement catch-all — pinned LAST, per the dispatch
         // contract: every other `context:*`/`util:*` element and every
         // other namespace entirely lands here.
         _ => parse_namespaced(ctx, diagnostics, scope, child),
     }
+}
+
+/// The `"bean"` arm's real body (build plan U4 row: `crate::bean::parse_bean`)
+/// plus the one policy that belongs at *this* level, not `parse_bean`'s:
+/// `DuplicateBeanId` is scoped to a single `<beans>` block (this
+/// `ctx.beans`, spec's `DuplicateBeanId` doc comment), which `parse_bean`
+/// itself has no visibility into — it only ever sees one `<bean>` element
+/// at a time, never its siblings. Split out of `dispatch_root_child`'s
+/// match purely for stack-diet framing — see that match's own `"bean"` arm
+/// comment.
+#[inline(never)]
+fn dispatch_bean_element(
+    ctx: &mut BeansFileCtx,
+    diagnostics: &mut Vec<Diagnostic>,
+    scope: &NsScope,
+    child: &XmlElement,
+) {
+    let bean = crate::bean::parse_bean(scope, child, diagnostics, 0);
+    if let Some(id) = bean.id.as_ref() {
+        let is_duplicate = ctx.beans.iter().any(|existing| {
+            existing.id.as_ref().map(|e| e.value.as_str()) == Some(id.value.as_str())
+        });
+        if is_duplicate {
+            diagnostics.push(Diagnostic {
+                code: DiagCode::DuplicateBeanId,
+                span: Some(id.span),
+                message: format!("duplicate bean id '{}' within this <beans> block", id.value),
+            });
+        }
+    }
+    // Both beans are preserved either way (spec's edge-case table:
+    // "duplicate id (both kept + diagnostic)") — the diagnostic is additive, never a
+    // reason to drop one.
+    ctx.beans.push(*bean);
+}
+
+/// `UnknownElement` diagnostic push for an unrecognized element inside the
+/// first-class `beans` namespace itself — split out of `dispatch_root_child`'s
+/// match purely for stack-diet framing (its `format!` call has its own
+/// temporaries that would otherwise sit in `dispatch_root_child`'s own
+/// frame on every call, per that function's `"bean"` arm comment).
+#[inline(never)]
+fn push_unknown_element(diagnostics: &mut Vec<Diagnostic>, child: &XmlElement) {
+    diagnostics.push(Diagnostic {
+        code: DiagCode::UnknownElement,
+        span: Some(child.span),
+        message: format!(
+            "unrecognized element <{}> inside the beans namespace",
+            child.name
+        ),
+    });
 }
 
 // ---------------------------------------------------------------------
@@ -890,6 +973,18 @@ pub(crate) fn parse_nested_beans(
 ) {
     let nested_scope = NsScope::from_element(element, Some(scope));
     let nested_ctx = parse_beans_body(&nested_scope, element, diagnostics, depth + 1);
+    push_nested_beans_file(ctx, nested_ctx);
+}
+
+/// `ctx.nested_profiles.push(nested_ctx.into_beans_file())` — split out of
+/// [`parse_nested_beans`] purely for stack-diet framing: `into_beans_file()`
+/// returns a `BeansFile` by value (~376 bytes) that has to materialize
+/// somewhere before the `push`, and this is on the `<beans>`-in-`<beans>`
+/// recursive chain (`tests/i3_hostile_proptest.rs`'s `deep_profile`
+/// fixture) — same "give a large sequential construction its own
+/// transient frame" rationale `bean::finish_bean`'s doc comment gives.
+#[inline(never)]
+fn push_nested_beans_file(ctx: &mut BeansFileCtx, nested_ctx: Box<BeansFileCtx>) {
     ctx.nested_profiles.push(nested_ctx.into_beans_file());
 }
 

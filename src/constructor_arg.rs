@@ -45,7 +45,7 @@
 
 use crate::dispatch::{find_attr, is_beans_ns, resolve_qname, spanned_attr, NsScope};
 use crate::events::{XmlAttr, XmlElement, XmlNode};
-use crate::inject_value::{parse_inject_value_child, ref_from_attr, value_lit_from_attr};
+use crate::inject_value::{parse_inject_value_child_boxed, ref_from_attr, value_lit_from_attr};
 use crate::model::{
     BeanCtx, ClassRef, ConstructorArg, DiagCode, Diagnostic, InjectValue, MetaEntry, Spanned,
 };
@@ -64,6 +64,14 @@ use crate::model::{
 /// must **not** be hardcoded to `0`: doing so would reset the guard at every
 /// `<constructor-arg>` level and defeat it entirely for recursion reached
 /// through a constructor-arg's inner `<bean>`.
+///
+/// **Stack-diet note**: same treatment `property::parse_property` documents
+/// on its own signature (I3 P0 Windows `STATUS_STACK_OVERFLOW` fix) — the
+/// attribute reads before the loop and the `resolve_value`+`ConstructorArg`
+/// assembly after it are both factored into `#[inline(never)]` helpers, and
+/// `child_value` is `Option<Box<InjectValue>>` rather than
+/// `Option<InjectValue>`, for the identical reasons that function's doc
+/// comment gives.
 pub(crate) fn parse_constructor_arg(
     ctx: &mut BeanCtx,
     diagnostics: &mut Vec<Diagnostic>,
@@ -71,19 +79,11 @@ pub(crate) fn parse_constructor_arg(
     element: &XmlElement,
     depth: u32,
 ) {
-    let index = find_attr(&element.attrs, "index").and_then(|attr| attr.value.value.parse().ok());
-    let type_ref = parse_type_ref_attr(&element.attrs);
-    let name = find_attr(&element.attrs, "name").map(spanned_attr);
-
+    let (index, type_ref, name) = resolve_constructor_arg_attrs(element);
     let value_attr = find_attr(&element.attrs, "value");
     let ref_attr = find_attr(&element.attrs, "ref");
-
     if value_attr.is_some() && ref_attr.is_some() {
-        diagnostics.push(Diagnostic {
-            code: DiagCode::ConflictingValueAndRef,
-            span: Some(element.span),
-            message: "<constructor-arg> specifies both value= and ref=".to_string(),
-        });
+        push_constructor_arg_value_ref_conflict(diagnostics, element.span);
     }
 
     // Own overlay — this element's own `xmlns`/`xmlns:*` (rare on
@@ -92,7 +92,7 @@ pub(crate) fn parse_constructor_arg(
     let own_scope = NsScope::from_element(element, Some(scope));
 
     let mut meta = Vec::new();
-    let mut child_value: Option<InjectValue> = None;
+    let mut child_value: Option<Box<InjectValue>> = None;
     let mut seen_value_child = false;
 
     for child in &element.children {
@@ -110,9 +110,13 @@ pub(crate) fn parse_constructor_arg(
         // `collection.rs`'s `parse_map`/`parse_map_entry`/`bean.rs`'s
         // `parse_qualifier`, which document this identical fix for their
         // own nested-element detection).
-        let child_scope = NsScope::from_element(child_element, Some(&own_scope));
-        let (ns, local) = resolve_qname(&child_element.name, &child_scope);
-        if local == "meta" && is_beans_ns(&ns) {
+        // `child_is_meta` — not an inline `NsScope`/qname-tuple check —
+        // purely for stack-diet framing, same rationale
+        // `property::parse_property`'s own `child_is_meta` call site
+        // documents: these locals are only needed for this one
+        // classification, never for the recursive descent
+        // (`parse_inject_value_child_boxed`) just below.
+        if child_is_meta(&own_scope, child_element) {
             if let Some(entry) = parse_meta_entry(child_element) {
                 meta.push(entry);
             }
@@ -123,14 +127,104 @@ pub(crate) fn parse_constructor_arg(
         // ignored" policy `property::parse_property`'s own loop documents.
         if !seen_value_child {
             seen_value_child = true;
-            child_value = parse_inject_value_child(&own_scope, diagnostics, depth, child_element);
+            // `_boxed`, not `parse_inject_value_child(..).map(Box::new)` —
+            // see `inject_value::parse_inject_value_child_boxed`'s own doc
+            // comment for why boxing one level too late still costs a full
+            // unboxed `InjectValue` in *this* frame.
+            child_value =
+                parse_inject_value_child_boxed(&own_scope, diagnostics, depth, child_element);
         }
     }
 
-    let value = resolve_value(value_attr, ref_attr, child_value, diagnostics, element.span);
+    finish_constructor_arg(
+        ctx,
+        element.span,
+        index,
+        type_ref,
+        name,
+        value_attr,
+        ref_attr,
+        child_value,
+        meta,
+        diagnostics,
+    );
+}
 
+/// Whether `child_element` resolves (under `scope`) to a `<meta>` element
+/// in the beans namespace — split out of [`parse_constructor_arg`]'s loop
+/// purely for stack-diet framing, see that loop's own call-site comment;
+/// identical shape to `property::parse_property`'s own `child_is_meta`.
+#[inline(never)]
+fn child_is_meta(scope: &NsScope, child_element: &XmlElement) -> bool {
+    let child_scope = NsScope::from_element(child_element, Some(scope));
+    // Kept as one `qn: (String, String)` binding rather than destructured
+    // `let (ns, local) = ..` — stack-diet micro-optimization, see
+    // `property::parse_property`'s own matching comment for the empirical
+    // (MIR-dump-confirmed) rationale.
+    let qn = resolve_qname(&child_element.name, &child_scope);
+    qn.1 == "meta" && is_beans_ns(&qn.0)
+}
+
+/// `index=`/`type=`/`name=` resolution — split out of
+/// [`parse_constructor_arg`] purely for stack-diet framing (see that
+/// function's own doc comment).
+#[inline(never)]
+pub(crate) fn resolve_constructor_arg_attrs(
+    element: &XmlElement,
+) -> (
+    Option<u32>,
+    Option<Spanned<ClassRef>>,
+    Option<Spanned<String>>,
+) {
+    let index = find_attr(&element.attrs, "index").and_then(|attr| attr.value.value.parse().ok());
+    let type_ref = parse_type_ref_attr(&element.attrs);
+    let name = find_attr(&element.attrs, "name").map(spanned_attr);
+    (index, type_ref, name)
+}
+
+/// `ConflictingValueAndRef` diagnostic push — split out of
+/// [`parse_constructor_arg`] purely for stack-diet framing, same rationale
+/// `property::push_property_value_ref_conflict` documents.
+#[inline(never)]
+pub(crate) fn push_constructor_arg_value_ref_conflict(
+    diagnostics: &mut Vec<Diagnostic>,
+    span: crate::model::ByteSpan,
+) {
+    diagnostics.push(Diagnostic {
+        code: DiagCode::ConflictingValueAndRef,
+        span: Some(span),
+        message: "<constructor-arg> specifies both value= and ref=".to_string(),
+    });
+}
+
+/// Final `resolve_value` + [`ConstructorArg`] assembly + push — split out of
+/// [`parse_constructor_arg`] purely for stack-diet framing, same rationale
+/// `property::finish_property` documents (only ever runs after this arg's
+/// own child loop, and any recursion reached through it, has fully
+/// returned).
+#[allow(clippy::too_many_arguments)]
+#[inline(never)]
+pub(crate) fn finish_constructor_arg(
+    ctx: &mut BeanCtx,
+    span: crate::model::ByteSpan,
+    index: Option<u32>,
+    type_ref: Option<Spanned<ClassRef>>,
+    name: Option<Spanned<String>>,
+    value_attr: Option<&XmlAttr>,
+    ref_attr: Option<&XmlAttr>,
+    child_value: Option<Box<InjectValue>>,
+    meta: Vec<MetaEntry>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let value = resolve_value(
+        value_attr,
+        ref_attr,
+        child_value.map(|b| *b),
+        diagnostics,
+        span,
+    );
     ctx.constructor_args.push(ConstructorArg {
-        span: element.span,
+        span,
         index,
         type_ref,
         name,

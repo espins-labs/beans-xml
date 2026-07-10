@@ -44,6 +44,9 @@
 //!
 //! `pub(crate)` — like `dispatch`, not part of the published API surface.
 
+use crate::constructor_arg::{
+    finish_constructor_arg, push_constructor_arg_value_ref_conflict, resolve_constructor_arg_attrs,
+};
 use crate::dispatch::{
     element_text, find_attr, find_bool_attr, is_beans_ns, resolve_qname, spanned_attr, NsScope,
 };
@@ -53,6 +56,7 @@ use crate::model::{
     AttrPair, Bean, BeanCtx, BeanRef, ByteSpan, ClassRef, ConstructorArg, DiagCode, Diagnostic,
     InjectValue, LookupMethod, MetaEntry, Property, Qualifier, RefKind, ReplacedMethod, Spanned,
 };
+use crate::property::{finish_property, push_property_value_ref_conflict, resolve_property_name};
 
 // ---------------------------------------------------------------------
 // SB-02: <bean> core attributes.
@@ -88,17 +92,497 @@ use crate::model::{
 /// own doc comment) — this parameter is what actually closes that loop;
 /// without it every `<property>` reset the depth back to 0 regardless of
 /// how deep its enclosing bean already was.
+///
+/// **Stack-diet note** (I3 P0 Windows `STATUS_STACK_OVERFLOW` fix): `Bean`/
+/// `BeanCtx` are ~568 bytes each (many `Vec`/`Option<Spanned<_>>` fields) —
+/// large enough that, held by value in every frame of the
+/// bean→property→inner-bean mutual recursion, `DEPTH_LIMIT` (256) levels
+/// blew a 256 KiB (or even a Windows-default 1 MiB) thread stack well
+/// before the guard ever fired. Two changes here specifically target that,
+/// verified empirically against `tests/scratch_stack_probe.rs` (see this
+/// function's own doc comment history / the fix's commit message for
+/// before/after numbers, not duplicated here to avoid rot):
+/// 1. `ctx` is heap-allocated (`Box<BeanCtx>`) instead of living in this
+///    frame — the 568-byte struct moves off the call stack entirely;
+///    `&mut BeanCtx` still threads through `dispatch_bean_child` exactly as
+///    before (`Box` derefs transparently at call boundaries).
+/// 2. This function returns `Box<Bean>`, not `Bean` — every deeply-recursive
+///    caller in the cycle ([`crate::inject_value::parse_inner_bean`]) needs
+///    a `Box<Bean>` anyway (`InjectValue::Inner(Box<Bean>)`), so returning
+///    one directly avoids constructing an unboxed `Bean` in the caller's
+///    own frame just to immediately re-box it. The one call site that
+///    genuinely wants an owned `Bean` (`dispatch::dispatch_root_child`'s
+///    `"bean"` arm, `ctx.beans: Vec<Bean>`) just dereferences once, at
+///    depth 0 — not part of the recursive chain, so that single unavoidable
+///    unboxed copy costs nothing per nesting level.
+///
+/// All attribute population (core `<bean>` attributes, the `p:`/`c:`
+/// prefixed-attribute hook) is factored into `#[inline(never)]` helpers
+/// below ([`populate_bean_core_attrs`]/[`populate_bean_pc_attrs`]) — not
+/// for the `#[inline(never)]` hint itself (this crate has no perf
+/// requirement calling for it), but because a helper's own locals/MIR
+/// temporaries live in *that helper's own stack frame*, fully popped once
+/// it returns — **before** this function's own recursive descent into
+/// `dispatch_bean_child`/deeper `<bean>`s ever begins. Left inline, an
+/// unoptimized (`-O0`, i.e. every `cargo test`/debug build) frame keeps a
+/// stack slot reserved for every local declared anywhere in the function
+/// for that whole call's lifetime, regardless of whether it's still
+/// "logically" needed — so this attribute-parsing code, if left inline,
+/// would otherwise sit on the stack at every one of `DEPTH_LIMIT` nested
+/// levels simultaneously, not just once per level.
+///
+/// **I3 P0 stack-diet fallback**: the recursive descent this doc comment's
+/// own numbered list above still describes at the level of *this bean's
+/// own attributes* is unchanged — but the mutual bean→property→inner-bean
+/// recursion that used to happen via a real Rust call back into this exact
+/// function (through `dispatch_bean_child`'s `"property"`/`"constructor-arg"`
+/// arms) is gone. Frame-dieting alone (the two numbered points above)
+/// halved per-level stack cost but could not reach a 256 KiB thread budget
+/// at `DEPTH_LIMIT` levels for every hostile shape (measured via
+/// `tests/scratch_stack_probe.rs`; see `crate::depth_engine`'s own module
+/// doc comment for the full before/after). This function is now a thin
+/// wrapper: it pushes one [`BeanFrame`] onto [`crate::depth_engine::run`]
+/// and lets that engine drive the whole subtree (this bean, every inner
+/// `<bean>`/collection reachable through it, however deep) on the heap
+/// instead of the real call stack. See [`BeanFrame`]'s own doc comment for
+/// how the recursion itself now works.
 pub(crate) fn parse_bean(
     scope: &NsScope,
     element: &XmlElement,
     diagnostics: &mut Vec<Diagnostic>,
     depth: u32,
-) -> Bean {
-    let mut ctx = BeanCtx {
-        span: element.span,
-        ..Default::default()
-    };
+) -> Box<Bean> {
+    let frame = BeanFrame::new(scope, element, diagnostics, depth);
+    let stack = vec![crate::depth_engine::Frame::Bean(frame)];
+    match crate::depth_engine::run(stack, diagnostics) {
+        crate::depth_engine::Completed::Bean(bean) => bean,
+        crate::depth_engine::Completed::Value(_) => {
+            unreachable!("a top-level BeanFrame always finishes into Completed::Bean")
+        }
+    }
+}
 
+// ---------------------------------------------------------------------
+// I3 P0 stack-diet fallback: explicit-stack (heap worklist) iteration for
+// the bean<->property/constructor-arg<->inner-bean recursion — see
+// `crate::depth_engine`'s own module doc comment for the full picture.
+//
+// Every non-recursive per-`<bean>` concern (core/`p:`/`c:` attribute
+// parsing, `<qualifier>`/`<meta>`/`<lookup-method>`/`<replaced-method>`/
+// decorator handling) is unchanged and still reused directly below — none
+// of those ever call back into `parse_bean`/`parse_collection_value`, so
+// they were never part of the unbounded recursion and don't need to move
+// onto the explicit stack; `dispatch_bean_child`'s own frozen match is
+// still the single dispatch point for them. Only the `"property"`/
+// `"constructor-arg"` arms, whose own value-shaped child can itself be
+// another `<bean>` or a collection, are intercepted *before*
+// `dispatch_bean_child` (their own arms there are consequently never
+// reached in practice — kept as-is regardless, since the match is frozen
+// structure and this isn't a leaf touching it) and rerouted through
+// `crate::inject_value::begin_resolve_value` — the single choke point
+// (mirroring `parse_inject_value_child_boxed`'s own former role) that
+// decides "resolve immediately" vs. "defer onto the explicit stack".
+// ---------------------------------------------------------------------
+
+/// One in-progress `parse_bean` call, suspended on the heap instead of the
+/// real call stack — see this section's own doc comment. `waiting`, when
+/// `Some`, is the `<property>`/`<constructor-arg>` at `children[idx - 1]`
+/// whose own value-shaped child has been pushed onto the engine's stack and
+/// hasn't come back yet; this bean's own children loop only resumes past it
+/// once [`Self::deliver`] hands the resolved value back.
+pub(crate) struct BeanFrame<'a> {
+    ctx: Box<BeanCtx>,
+    own_scope: NsScope,
+    children: &'a [XmlNode],
+    idx: usize,
+    depth: u32,
+    waiting: Option<PendingBeanValue<'a>>,
+}
+
+/// A `<property>`/`<constructor-arg>` whose own value-shaped child has been
+/// deferred onto the explicit stack — everything `finish_property`/
+/// `finish_constructor_arg` need *except* the resolved child value itself
+/// (which arrives later via [`BeanFrame::deliver`]), mirroring exactly what
+/// `property::parse_property`/`constructor_arg::parse_constructor_arg` used
+/// to hold in their own (now-unwound) stack frame across the recursive
+/// call.
+enum PendingBeanValue<'a> {
+    Property {
+        span: ByteSpan,
+        name: Spanned<String>,
+        value_attr: Option<&'a XmlAttr>,
+        ref_attr: Option<&'a XmlAttr>,
+        meta: Vec<MetaEntry>,
+    },
+    ConstructorArg {
+        span: ByteSpan,
+        index: Option<u32>,
+        type_ref: Option<Spanned<ClassRef>>,
+        name: Option<Spanned<String>>,
+        value_attr: Option<&'a XmlAttr>,
+        ref_attr: Option<&'a XmlAttr>,
+        meta: Vec<MetaEntry>,
+    },
+}
+
+impl<'a> BeanFrame<'a> {
+    /// Starts a new frame for `element` — the exact prologue `parse_bean`
+    /// ran inline before its own children loop (core attrs, own overlay,
+    /// `p:`/`c:` attrs), unchanged.
+    pub(crate) fn new(
+        scope: &NsScope,
+        element: &'a XmlElement,
+        diagnostics: &mut Vec<Diagnostic>,
+        depth: u32,
+    ) -> Self {
+        let mut ctx = new_bean_ctx(element.span);
+        populate_bean_core_attrs(&mut ctx, element, diagnostics);
+        let own_scope = NsScope::from_element(element, Some(scope));
+        populate_bean_pc_attrs(&mut ctx, element, diagnostics, &own_scope);
+        BeanFrame {
+            ctx,
+            own_scope,
+            children: &element.children,
+            idx: 0,
+            depth,
+            waiting: None,
+        }
+    }
+
+    /// Advances this frame by one step: either makes local progress
+    /// (`Advance::Continue`, implicitly, by looping again below), finishes
+    /// (`Advance::Finished`), or defers a property/constructor-arg's own
+    /// value-shaped child onto the stack (`Advance::Push`). Never called
+    /// while `self.waiting.is_some()` — that case only ever resumes via
+    /// [`Self::deliver`].
+    pub(crate) fn step(
+        &mut self,
+        diagnostics: &mut Vec<Diagnostic>,
+    ) -> crate::depth_engine::Advance<'a> {
+        use crate::depth_engine::Advance;
+        debug_assert!(self.waiting.is_none());
+        loop {
+            let Some(child) = self.children.get(self.idx) else {
+                return Advance::Finished;
+            };
+            self.idx += 1;
+            let XmlNode::Element(child_element) = child else {
+                continue;
+            };
+            let child_scope = NsScope::from_element(child_element, Some(&self.own_scope));
+            let qn = resolve_qname(&child_element.name, &child_scope);
+            if is_beans_ns(&qn.0) && qn.1 == "property" {
+                if let Some(advance) = self.begin_property(child_element, diagnostics) {
+                    return advance;
+                }
+                continue;
+            }
+            if is_beans_ns(&qn.0) && qn.1 == "constructor-arg" {
+                if let Some(advance) = self.begin_constructor_arg(child_element, diagnostics) {
+                    return advance;
+                }
+                continue;
+            }
+            // Every other bean-child shape is bounded, non-recursive work
+            // — reuse the frozen dispatch match unchanged.
+            dispatch_bean_child(
+                &mut self.ctx,
+                diagnostics,
+                &self.own_scope,
+                child_element,
+                self.depth,
+            );
+        }
+    }
+
+    /// Phase A (scan `element`'s own children for `<meta>` + the first
+    /// non-meta value-shaped candidate — see [`scan_meta_and_candidate`]'s
+    /// own doc comment for why this split is diagnostic-order-safe) plus
+    /// Phase B's *attempt*. `None` when the whole property finished
+    /// synchronously (already pushed onto `self.ctx.properties` — the
+    /// caller's loop should continue); `Some(Advance::Push(..))` when it
+    /// needs to suspend.
+    fn begin_property(
+        &mut self,
+        element: &'a XmlElement,
+        diagnostics: &mut Vec<Diagnostic>,
+    ) -> Option<crate::depth_engine::Advance<'a>> {
+        use crate::depth_engine::Advance;
+        use crate::inject_value::ValueStep;
+
+        let name = resolve_property_name(element);
+        let value_attr = find_attr(&element.attrs, "value");
+        let ref_attr = find_attr(&element.attrs, "ref");
+        if value_attr.is_some() && ref_attr.is_some() {
+            push_property_value_ref_conflict(diagnostics, element.span, &name.value);
+        }
+        let own_scope = NsScope::from_element(element, Some(&self.own_scope));
+        let (meta, candidate) = scan_meta_and_candidate(&own_scope, element);
+
+        let Some(candidate_element) = candidate else {
+            finish_property(
+                &mut self.ctx,
+                element.span,
+                name,
+                value_attr,
+                ref_attr,
+                None,
+                meta,
+                diagnostics,
+            );
+            return None;
+        };
+        match crate::inject_value::begin_resolve_value(
+            &own_scope,
+            diagnostics,
+            self.depth,
+            candidate_element,
+        ) {
+            ValueStep::Resolved(value) => {
+                finish_property(
+                    &mut self.ctx,
+                    element.span,
+                    name,
+                    value_attr,
+                    ref_attr,
+                    value,
+                    meta,
+                    diagnostics,
+                );
+                None
+            }
+            ValueStep::Deferred(frame) => {
+                self.waiting = Some(PendingBeanValue::Property {
+                    span: element.span,
+                    name,
+                    value_attr,
+                    ref_attr,
+                    meta,
+                });
+                Some(Advance::Push(frame))
+            }
+        }
+    }
+
+    /// Same shape as [`Self::begin_property`], for `<constructor-arg>`.
+    fn begin_constructor_arg(
+        &mut self,
+        element: &'a XmlElement,
+        diagnostics: &mut Vec<Diagnostic>,
+    ) -> Option<crate::depth_engine::Advance<'a>> {
+        use crate::depth_engine::Advance;
+        use crate::inject_value::ValueStep;
+
+        let (index, type_ref, name) = resolve_constructor_arg_attrs(element);
+        let value_attr = find_attr(&element.attrs, "value");
+        let ref_attr = find_attr(&element.attrs, "ref");
+        if value_attr.is_some() && ref_attr.is_some() {
+            push_constructor_arg_value_ref_conflict(diagnostics, element.span);
+        }
+        let own_scope = NsScope::from_element(element, Some(&self.own_scope));
+        let (meta, candidate) = scan_meta_and_candidate(&own_scope, element);
+
+        let Some(candidate_element) = candidate else {
+            finish_constructor_arg(
+                &mut self.ctx,
+                element.span,
+                index,
+                type_ref,
+                name,
+                value_attr,
+                ref_attr,
+                None,
+                meta,
+                diagnostics,
+            );
+            return None;
+        };
+        match crate::inject_value::begin_resolve_value(
+            &own_scope,
+            diagnostics,
+            self.depth,
+            candidate_element,
+        ) {
+            ValueStep::Resolved(value) => {
+                finish_constructor_arg(
+                    &mut self.ctx,
+                    element.span,
+                    index,
+                    type_ref,
+                    name,
+                    value_attr,
+                    ref_attr,
+                    value,
+                    meta,
+                    diagnostics,
+                );
+                None
+            }
+            ValueStep::Deferred(frame) => {
+                self.waiting = Some(PendingBeanValue::ConstructorArg {
+                    span: element.span,
+                    index,
+                    type_ref,
+                    name,
+                    value_attr,
+                    ref_attr,
+                    meta,
+                });
+                Some(Advance::Push(frame))
+            }
+        }
+    }
+
+    /// Resumes a suspended property/constructor-arg once its own
+    /// value-shaped child has finished resolving — finishes it immediately
+    /// (pushes onto `self.ctx.properties`/`constructor_args`) and hands
+    /// control back to [`Self::step`] to continue this bean's own children
+    /// loop.
+    pub(crate) fn deliver(
+        &mut self,
+        value: Box<InjectValue>,
+        diagnostics: &mut Vec<Diagnostic>,
+    ) -> crate::depth_engine::Advance<'a> {
+        match self
+            .waiting
+            .take()
+            .expect("BeanFrame delivered without a pending property/constructor-arg")
+        {
+            PendingBeanValue::Property {
+                span,
+                name,
+                value_attr,
+                ref_attr,
+                meta,
+            } => {
+                finish_property(
+                    &mut self.ctx,
+                    span,
+                    name,
+                    value_attr,
+                    ref_attr,
+                    Some(value),
+                    meta,
+                    diagnostics,
+                );
+            }
+            PendingBeanValue::ConstructorArg {
+                span,
+                index,
+                type_ref,
+                name,
+                value_attr,
+                ref_attr,
+                meta,
+            } => {
+                finish_constructor_arg(
+                    &mut self.ctx,
+                    span,
+                    index,
+                    type_ref,
+                    name,
+                    value_attr,
+                    ref_attr,
+                    Some(value),
+                    meta,
+                    diagnostics,
+                );
+            }
+        }
+        crate::depth_engine::Advance::Continue
+    }
+
+    /// Consumes this finished frame into the assembled [`Bean`] — only ever
+    /// called once `step`/`deliver` has returned `Advance::Finished` for
+    /// it.
+    pub(crate) fn finish(self) -> Box<Bean> {
+        finish_bean(self.ctx)
+    }
+}
+
+/// Phase A shared by [`BeanFrame::begin_property`]/`begin_constructor_arg`:
+/// scans `element`'s own children once, collecting every `<meta>` entry
+/// (unconditional — same as the original interleaved loop) and identifying
+/// the first non-meta child element, if any, as the value candidate —
+/// resolution of that candidate is Phase B, deliberately not done here.
+///
+/// This split is diagnostic-order-safe because meta collection
+/// (`parse_meta_entry`) never itself pushes a diagnostic, and "which child
+/// is the value candidate" never depends on any resolution *outcome*
+/// (unlike `collection::EntryScan`'s own `<key>` handling, whose retry-on-
+/// `None` rule genuinely needs a resumable scan, not a two-phase split —
+/// see that type's own doc comment) — every diagnostic either loop could
+/// ever produce comes from resolving that one candidate, wherever in
+/// `element`'s own children it sits, so scanning fully first and resolving
+/// second produces the exact same diagnostic sequence as the original
+/// single interleaved loop.
+fn scan_meta_and_candidate<'a>(
+    own_scope: &NsScope,
+    element: &'a XmlElement,
+) -> (Vec<MetaEntry>, Option<&'a XmlElement>) {
+    let mut meta = Vec::new();
+    let mut candidate = None;
+    for child in &element.children {
+        let XmlNode::Element(child_element) = child else {
+            continue;
+        };
+        let child_scope = NsScope::from_element(child_element, Some(own_scope));
+        let qn = resolve_qname(&child_element.name, &child_scope);
+        if qn.1 == "meta" && is_beans_ns(&qn.0) {
+            if let Some(entry) = parse_meta_entry(child_element) {
+                meta.push(entry);
+            }
+            continue;
+        }
+        if candidate.is_none() {
+            candidate = Some(child_element);
+        }
+    }
+    (meta, candidate)
+}
+
+/// `Box::new(BeanCtx::default())` plus the one field ([`ByteSpan`]) known
+/// up front — split out of [`parse_bean`] purely for stack-diet framing.
+/// Not just code motion: `-O0` codegen doesn't fuse `Box::new(f())` into
+/// "allocate, then construct directly into the allocation" (confirmed
+/// empirically via `otool -tv` disassembly of a debug build — a real
+/// `BeanCtx`-sized `memcpy` from a stack temp into the fresh allocation),
+/// so this constructor's ~568-byte temporary needs its *own* frame — one
+/// that's fully popped before `parse_bean`'s own recursive descent begins
+/// — rather than `parse_bean`'s.
+#[inline(never)]
+fn new_bean_ctx(span: ByteSpan) -> Box<BeanCtx> {
+    let mut ctx = Box::new(BeanCtx::default());
+    ctx.span = span;
+    ctx
+}
+
+/// `ctx.into_bean()` plus the final re-box — split out of [`parse_bean`]
+/// purely for stack-diet framing, same rationale [`new_bean_ctx`] gives:
+/// this assembly step's ~568-byte `Bean` temporary (same `-O0`
+/// `Box::new(f())` non-fusion) would otherwise sit in `parse_bean`'s own
+/// frame for the *entire* call, including while its child loop is still
+/// recursing arbitrarily deep — even though this code only actually runs
+/// once that recursion has fully returned. A real function-call boundary,
+/// not just code motion within one function, is what makes the difference:
+/// this helper's frame doesn't exist at all until it's actually invoked.
+#[inline(never)]
+fn finish_bean(ctx: Box<BeanCtx>) -> Box<Bean> {
+    Box::new(ctx.into_bean())
+}
+
+/// Every core `<bean>` attribute (`id`/`name`/`class`/`parent`/`scope`/
+/// `abstract`/`lazy-init`/`autowire`/`autowire-candidate`/`primary`/
+/// `depends-on`/`factory-bean`/`factory-method`/`init-method`/
+/// `destroy-method`) plus the `BeanWithoutClassOrParent` check — split out
+/// of [`parse_bean`] purely for stack-diet framing (see that function's own
+/// doc comment); no behavior change from when this was inline there.
+#[inline(never)]
+fn populate_bean_core_attrs(
+    ctx: &mut BeanCtx,
+    element: &XmlElement,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
     ctx.id = find_attr(&element.attrs, "id").map(spanned_attr);
     ctx.names = find_attr(&element.attrs, "name")
         .map(|attr| split_name_tokens(&attr.value.value, attr.value.span))
@@ -126,31 +610,23 @@ pub(crate) fn parse_bean(
             message: "bean has none of class/parent/factory-bean and is not abstract".to_string(),
         });
     }
+}
 
-    // Own overlay — used both by the prefixed-attribute hook below and by
-    // the bean-child dispatch (`dispatch_bean_child`) further down.
-    let own_scope = NsScope::from_element(element, Some(scope));
-
-    // Prefixed-attribute hook (build plan U4 (b)): every attribute passes
-    // through here so P2's eventual `p:`/`c:`-namespace normalization can
-    // decide, per attribute, whether it belongs to `Property`/
-    // `ConstructorArg` — a no-op today (see `normalize_pc_attr`'s own doc
-    // comment).
+/// The `p:`/`c:`-namespace prefixed-attribute hook (build plan U4 (b)):
+/// every attribute passes through [`normalize_pc_attr`] so it can decide,
+/// per attribute, whether it belongs to `Property`/`ConstructorArg`. Split
+/// out of [`parse_bean`] for the same stack-diet reason
+/// [`populate_bean_core_attrs`]'s own doc comment gives.
+#[inline(never)]
+fn populate_bean_pc_attrs(
+    ctx: &mut BeanCtx,
+    element: &XmlElement,
+    diagnostics: &mut Vec<Diagnostic>,
+    own_scope: &NsScope,
+) {
     for attr in &element.attrs {
-        normalize_pc_attr(&mut ctx, diagnostics, &own_scope, attr);
+        normalize_pc_attr(ctx, diagnostics, own_scope, attr);
     }
-
-    for child in &element.children {
-        if let XmlNode::Element(child_element) = child {
-            dispatch_bean_child(&mut ctx, diagnostics, &own_scope, child_element, depth);
-        }
-        // Direct text inside a `<bean>` (whitespace between child
-        // elements, typically) has nothing to attach to at this level and
-        // is dropped, same as `dispatch::parse_beans_body`'s own
-        // out-of-element text handling.
-    }
-
-    ctx.into_bean()
 }
 
 /// `class="..."` → a `ClassRef`, or `None` when the attribute is absent
@@ -340,20 +816,27 @@ fn dispatch_bean_child(
     depth: u32,
 ) {
     let child_scope = NsScope::from_element(child, Some(scope));
-    let (ns, local) = resolve_qname(&child.name, &child_scope);
-    match local.as_str() {
-        "description" if is_beans_ns(&ns) => {
+    // Kept as one `qn: (String, String)` binding rather than destructured
+    // `let (ns, local) = ..` — stack-diet micro-optimization, see
+    // `property::parse_property`'s own matching comment for the empirical
+    // (MIR-dump-confirmed) rationale: destructuring adds a second copy on
+    // top of the tuple's own temporary at `-O0`.
+    let qn = resolve_qname(&child.name, &child_scope);
+    match qn.1.as_str() {
+        "description" if is_beans_ns(&qn.0) => {
             // SB-02 core (this unit), not a leaf stub — same field, same
             // reading, as `BeansFile::description`.
             ctx.description = Some(element_text(child));
         }
-        "meta" if is_beans_ns(&ns) => parse_meta(ctx, diagnostics, scope, child),
-        "qualifier" if is_beans_ns(&ns) => parse_qualifier(ctx, diagnostics, scope, child),
-        "lookup-method" if is_beans_ns(&ns) => parse_lookup_method(ctx, diagnostics, scope, child),
-        "replaced-method" if is_beans_ns(&ns) => {
+        "meta" if is_beans_ns(&qn.0) => parse_meta(ctx, diagnostics, scope, child),
+        "qualifier" if is_beans_ns(&qn.0) => parse_qualifier(ctx, diagnostics, scope, child),
+        "lookup-method" if is_beans_ns(&qn.0) => {
+            parse_lookup_method(ctx, diagnostics, scope, child)
+        }
+        "replaced-method" if is_beans_ns(&qn.0) => {
             parse_replaced_method(ctx, diagnostics, scope, child)
         }
-        "property" if is_beans_ns(&ns) => {
+        "property" if is_beans_ns(&qn.0) => {
             // Deliberately not one of U4's five stubs: wrapping
             // `InjectValue` into a `Property` is U6's contract (SB-04,
             // build plan U6 row), which builds on U5a. U6 wires the real
@@ -362,7 +845,7 @@ fn dispatch_bean_child(
             // `parse_bean`.
             crate::property::parse_property(ctx, diagnostics, scope, child, depth);
         }
-        "constructor-arg" if is_beans_ns(&ns) => {
+        "constructor-arg" if is_beans_ns(&qn.0) => {
             // Same treatment U6 gives `"property"` above: wrapping
             // `InjectValue` into a `ConstructorArg` is U7's contract
             // (SB-05, build plan U7 row), which builds on U5a. U7 wires
@@ -373,17 +856,26 @@ fn dispatch_bean_child(
         // isn't one of the recognized/reserved names above — `UnknownElement`,
         // same policy `dispatch::dispatch_root_child`'s own matching arm
         // documents for the `<beans>`-body level.
-        _ if is_beans_ns(&ns) => {
-            diagnostics.push(Diagnostic {
-                code: DiagCode::UnknownElement,
-                span: Some(child.span),
-                message: format!("unrecognized element <{}> inside a <bean>", child.name),
-            });
-        }
+        _ if is_beans_ns(&qn.0) => push_unknown_bean_child(diagnostics, child),
         // Decorator catch-all — pinned LAST, per the dispatch contract:
         // every other namespace (`aop:scoped-proxy`, ...) lands here.
         _ => parse_decorator(ctx, diagnostics, scope, child),
     }
+}
+
+/// `UnknownElement` diagnostic push for an unrecognized element inside a
+/// `<bean>` — split out of [`dispatch_bean_child`]'s match purely for
+/// stack-diet framing (its `format!` call has its own temporaries that
+/// would otherwise sit in `dispatch_bean_child`'s own frame on every
+/// recursive call — this function is on the bean→property→inner-bean
+/// mutual recursion's own hot chain, see `bean::parse_bean`'s doc comment).
+#[inline(never)]
+fn push_unknown_bean_child(diagnostics: &mut Vec<Diagnostic>, child: &XmlElement) {
+    diagnostics.push(Diagnostic {
+        code: DiagCode::UnknownElement,
+        span: Some(child.span),
+        message: format!("unrecognized element <{}> inside a <bean>", child.name),
+    });
 }
 
 // ---------------------------------------------------------------------
@@ -967,7 +1459,10 @@ mod tests {
     fn parse_bean_fragment(source: &str) -> (Bean, Vec<Diagnostic>) {
         let element = build_tree(source).root.expect("root element found");
         let mut diagnostics = Vec::new();
-        let bean = parse_bean(&NsScope::default(), &element, &mut diagnostics, 0);
+        // `parse_bean` returns `Box<Bean>` (stack-diet — see its own doc
+        // comment); every test in this module wants an owned `Bean` same as
+        // before, so unbox once here rather than touching every call site.
+        let bean = *parse_bean(&NsScope::default(), &element, &mut diagnostics, 0);
         (bean, diagnostics)
     }
 

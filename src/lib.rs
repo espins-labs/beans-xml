@@ -42,6 +42,14 @@ mod dispatch;
 /// contract; wired behind `dispatch::dispatch_root_child`'s `"bean"` arm.
 mod bean;
 
+/// I3 P0 stack-diet fallback (Windows `STATUS_STACK_OVERFLOW`): the
+/// explicit-stack (heap worklist) engine that replaces real call-stack
+/// recursion for the one unbounded recursive axis in this crate — bean/
+/// property/constructor-arg/collection nesting depth. `pub(crate)` seam —
+/// see that module's own doc comment for the full contract; wired behind
+/// `bean::BeanFrame`/`collection::ListLikeFrame`/`collection::MapFrame`.
+mod depth_engine;
+
 /// Unit U5a — `InjectValue` core (SB-06): value/ref/idref/inner/null (no
 /// collections — see `collection` (U5b) directly below for those).
 /// `pub(crate)` seam — not itself called from `parse`/`parse_bytes`

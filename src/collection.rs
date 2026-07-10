@@ -36,9 +36,7 @@ use crate::dispatch::{
     resolve_qname, spanned_attr, NsScope,
 };
 use crate::events::{XmlAttr, XmlElement, XmlNode};
-use crate::inject_value::{
-    build_value_lit_from_segments, parse_inject_value_child, ref_from_attr, value_lit_from_attr,
-};
+use crate::inject_value::{build_value_lit_from_segments, ref_from_attr, value_lit_from_attr};
 use crate::model::{
     ClassRef, Collection, DiagCode, Diagnostic, InjectValue, MapEntry, PropEntry, Spanned,
 };
@@ -51,104 +49,272 @@ use crate::model::{
 /// crate follows — see this module's own doc comment); this function
 /// re-derives its own overlay via `NsScope::from_element` wherever it needs
 /// one, rather than the caller doing it.
+///
+/// **Stack-diet note** (I3 P0 Windows `STATUS_STACK_OVERFLOW` fix): the
+/// `NestingLimitExceeded` early-return's `format!` call and each `match`
+/// arm's own `Collection`-variant construction are both factored into
+/// `#[inline(never)]` helpers below — see `bean::parse_bean`'s doc comment
+/// for the "-O0 reserves every local for the whole function" framing and
+/// `inject_value::parse_inject_value_child`'s doc comment for why a
+/// `match`'s arms specifically each need their own real function-call
+/// boundary (confirmed empirically via `otool -tv` disassembly of a debug
+/// build for this exact function too — this is the choke point for the
+/// list/map self-recursion `tests/i3_hostile_proptest.rs`'s `deep_list`/
+/// `deep_map` fixtures stress).
+///
+/// **I3 P0 stack-diet fallback**: the recursive list/map self-descent this
+/// doc comment's own stack-diet note used to describe (`resolve_list_collection`/
+/// `resolve_set_collection`/`resolve_array_collection`/`parse_map`, all
+/// removed) is gone — frame-dieting alone could not reach a 256 KiB thread
+/// budget at `DEPTH_LIMIT` levels for these shapes (measured via
+/// `tests/scratch_stack_probe.rs`; see `crate::depth_engine`'s own module
+/// doc comment for the full before/after). This function is now a thin
+/// wrapper around [`crate::inject_value::begin_resolve_collection`] (the
+/// same depth-check-and-classify primitive `ListLikeFrame`/`MapFrame`'s own
+/// item/entry resolution funnels through) plus, for the two collection
+/// shapes that do need further recursion (`list`/`set`/`array`/`map`, not
+/// `props`), [`crate::depth_engine::run`] to drive that recursion on the
+/// heap instead of the real call stack.
 pub(crate) fn parse_collection_value(
     scope: &NsScope,
     diagnostics: &mut Vec<Diagnostic>,
     depth: u32,
     element: &XmlElement,
 ) -> InjectValue {
-    if depth >= crate::DEPTH_LIMIT {
-        diagnostics.push(Diagnostic {
-            code: DiagCode::NestingLimitExceeded,
-            span: Some(element.span),
-            message: format!(
-                "collection nesting exceeded {} levels; subtree treated as opaque",
-                crate::DEPTH_LIMIT
-            ),
-        });
-        return InjectValue::Null(element.span);
+    match crate::inject_value::begin_resolve_collection(scope, diagnostics, depth, element) {
+        crate::inject_value::ValueStep::Resolved(Some(value)) => *value,
+        // `begin_resolve_collection` only ever returns `Resolved(None)` for
+        // `NotBeansNs`/`Unknown` element *kinds* — a distinction it never
+        // makes itself (its own `CollectionKind::Unknown` fallback already
+        // resolves to `Resolved(Some(..))`, an empty list, same as this
+        // function's own former defensive fallback). Kept as a match arm
+        // rather than `.unwrap()` so this stays infallible (rule 4) even if
+        // that invariant is ever violated by a future edit.
+        crate::inject_value::ValueStep::Resolved(None) => InjectValue::Null(element.span),
+        crate::inject_value::ValueStep::Deferred(frame) => {
+            match crate::depth_engine::run(vec![*frame], diagnostics) {
+                crate::depth_engine::Completed::Value(value) => *value,
+                crate::depth_engine::Completed::Bean(_) => {
+                    unreachable!("a ListLike/Map frame always finishes into Completed::Value")
+                }
+            }
+        }
     }
+}
 
+/// [`parse_collection_value`]'s own classification result — see the
+/// stack-diet note on [`classify_collection_element`] for why this is a
+/// small enum rather than the raw qname `local` string. `pub(crate)`:
+/// shared with `inject_value::begin_resolve_collection`, the cross-module
+/// half of the I3 P0 stack-diet fallback (`crate::depth_engine`'s own
+/// module doc comment) — that function needs this same classification to
+/// decide "resolve immediately" (`Props`/`Unknown`) vs. "push a frame"
+/// (`List`/`Set`/`Array`/`Map`).
+pub(crate) enum CollectionKind {
+    List,
+    Set,
+    Array,
+    Map,
+    Props,
+    Unknown,
+}
+
+/// `element`'s own overlay + `resolve_qname` classification — split out of
+/// [`parse_collection_value`] purely for stack-diet framing: `own_scope`
+/// (72 bytes) and the qname tuple this needs are used *only* to pick a
+/// `CollectionKind` — every arm above is called with the *original*
+/// `scope` parameter, not `own_scope` (each arm's own callee re-derives its
+/// own overlay fresh, same convention `inject_value::parse_inner_bean_boxed`
+/// documents), so unlike an `own_scope` that has to stay alive across a
+/// recursive call (boxed instead elsewhere in this crate's hot chain), this
+/// pair can be dropped entirely once classification is done — confining
+/// its cost to a frame that's fully popped before `parse_collection_value`'s
+/// own recursive descent (through whichever arm matched) begins.
+#[inline(never)]
+pub(crate) fn classify_collection_element(scope: &NsScope, element: &XmlElement) -> CollectionKind {
     let own_scope = NsScope::from_element(element, Some(scope));
     let (_, local) = resolve_qname(&element.name, &own_scope);
-    let collection = match local.as_str() {
-        "list" => {
-            let (items, value_type, merge) = parse_list_like(scope, diagnostics, depth, element);
-            Collection::List {
-                items,
-                value_type,
-                merge,
-            }
-        }
-        "set" => {
-            let (items, value_type, merge) = parse_list_like(scope, diagnostics, depth, element);
-            Collection::Set {
-                items,
-                value_type,
-                merge,
-            }
-        }
-        "array" => {
-            let (items, value_type, merge) = parse_list_like(scope, diagnostics, depth, element);
-            Collection::Array {
-                items,
-                value_type,
-                merge,
-            }
-        }
-        "map" => parse_map(scope, diagnostics, depth, element),
-        "props" => parse_props(scope, element),
-        // Defensive only: `inject_value::parse_inject_value_child`'s own
-        // match calls this function exclusively for the five names above.
-        // No panic (rule 4) if that invariant is ever violated — an empty
-        // list is the least surprising fallback.
-        _ => Collection::List {
-            items: Vec::new(),
-            value_type: None,
-            merge: None,
-        },
-    };
+    match local.as_str() {
+        "list" => CollectionKind::List,
+        "set" => CollectionKind::Set,
+        "array" => CollectionKind::Array,
+        "map" => CollectionKind::Map,
+        "props" => CollectionKind::Props,
+        _ => CollectionKind::Unknown,
+    }
+}
+
+/// `InjectValue::Collection(Spanned { value: collection, span })` assembly
+/// — split out of [`parse_collection_value`] purely for stack-diet framing:
+/// this sequential wrap (`Collection` → `Spanned<Collection>` →
+/// `InjectValue`, confirmed via `otool -tv` disassembly of a debug build to
+/// cost three separate `memcpy`s at `-O0`) always runs (not one arm among
+/// several), but still benefits from its own frame rather than parse_collection_value's
+/// own — same "give large sequential construction its own transient frame"
+/// rationale `bean::finish_bean`'s doc comment gives.
+#[inline(never)]
+pub(crate) fn box_collection_inject_value(
+    collection: Collection,
+    span: crate::model::ByteSpan,
+) -> InjectValue {
     InjectValue::Collection(Spanned {
         value: collection,
-        span: element.span,
+        span,
     })
+}
+
+/// `NestingLimitExceeded` diagnostic push for [`parse_collection_value`]'s
+/// own depth-limit branch — split out purely for stack-diet framing, see
+/// that function's own doc comment.
+#[inline(never)]
+#[cold]
+pub(crate) fn nesting_limit_exceeded_collection(
+    diagnostics: &mut Vec<Diagnostic>,
+    span: crate::model::ByteSpan,
+) -> InjectValue {
+    diagnostics.push(Diagnostic {
+        code: DiagCode::NestingLimitExceeded,
+        span: Some(span),
+        message: format!(
+            "collection nesting exceeded {} levels; subtree treated as opaque",
+            crate::DEPTH_LIMIT
+        ),
+    });
+    InjectValue::Null(span)
 }
 
 // ---------------------------------------------------------------------
 // <list>/<set>/<array> — identical shape (build plan/model: `ListLike`).
+//
+// I3 P0 stack-diet fallback: `resolve_list_collection`/`resolve_set_collection`/
+// `resolve_array_collection`/`parse_list_like` (former recursive item loop,
+// removed) are replaced by `ListLikeFrame` — see `crate::depth_engine`'s own
+// module doc comment for the full picture. `list`/`set`/`array` still share
+// one frame type, differing only in which `Collection` variant
+// `ListLikeFrame::finish` builds — `list`/`set`/`array`'s own item loop
+// itself never differed either, so nothing beyond the finished variant
+// distinguishes them here, same as before this fix.
 // ---------------------------------------------------------------------
 
-/// Shared by `list`/`set`/`array`: every direct child element resolves
-/// through `inject_value::parse_inject_value_child` (values, refs, inner
-/// beans, *and* — since that function's own match now includes this
-/// module's five names — nested collections), each one level deeper than
-/// this collection itself (`depth + 1`). An unrecognized child (`None`)
-/// is silently skipped, same "this function only ever resolves, never
-/// opines" policy `parse_inject_value_child`'s own doc comment states.
-fn parse_list_like(
-    scope: &NsScope,
-    diagnostics: &mut Vec<Diagnostic>,
+/// Which `Collection` variant a [`ListLikeFrame`] builds once finished.
+pub(crate) enum ListLikeKind {
+    List,
+    Set,
+    Array,
+}
+
+/// One in-progress `<list>`/`<set>`/`<array>` — see this section's own doc
+/// comment. Every direct child element resolves through
+/// `inject_value::begin_resolve_value` (values, refs, inner beans, and
+/// nested collections), each one level deeper than this collection itself
+/// (`depth + 1`, [`Self::step`]) — same depth-hop rule `parse_list_like`
+/// (removed) documented. An unrecognized child (`None`) is silently
+/// skipped, same "this function only ever resolves, never opines" policy
+/// `parse_inject_value_child`'s own doc comment states.
+pub(crate) struct ListLikeFrame<'a> {
+    kind: ListLikeKind,
+    own_scope: NsScope,
+    children: &'a [XmlNode],
+    idx: usize,
     depth: u32,
-    element: &XmlElement,
-) -> (Vec<InjectValue>, Option<Spanned<ClassRef>>, Option<bool>) {
-    let own_scope = NsScope::from_element(element, Some(scope));
-    let mut items = Vec::new();
-    for child in &element.children {
-        if let XmlNode::Element(child_element) = child {
-            if let Some(value) =
-                parse_inject_value_child(&own_scope, diagnostics, depth + 1, child_element)
-            {
-                items.push(value);
+    items: Vec<InjectValue>,
+    value_type: Option<Spanned<ClassRef>>,
+    merge: Option<bool>,
+    span: crate::model::ByteSpan,
+}
+
+impl<'a> ListLikeFrame<'a> {
+    /// `depth` here is the containing collection's own (unincremented)
+    /// depth — same as `parse_list_like`'s former `depth` parameter; items
+    /// are resolved at `depth + 1` (see [`Self::step`]), matching that
+    /// function's own `depth + 1` call.
+    pub(crate) fn new(
+        kind: ListLikeKind,
+        scope: &NsScope,
+        element: &'a XmlElement,
+        depth: u32,
+    ) -> Self {
+        let own_scope = NsScope::from_element(element, Some(scope));
+        let value_type = class_ref_from_attr(&element.attrs, "value-type");
+        let merge = find_bool_attr(&element.attrs, "merge");
+        ListLikeFrame {
+            kind,
+            own_scope,
+            children: &element.children,
+            idx: 0,
+            depth,
+            items: Vec::new(),
+            value_type,
+            merge,
+            span: element.span,
+        }
+    }
+
+    pub(crate) fn step(
+        &mut self,
+        diagnostics: &mut Vec<Diagnostic>,
+    ) -> crate::depth_engine::Advance<'a> {
+        use crate::depth_engine::Advance;
+        use crate::inject_value::ValueStep;
+        loop {
+            let Some(child) = self.children.get(self.idx) else {
+                return Advance::Finished;
+            };
+            self.idx += 1;
+            let XmlNode::Element(child_element) = child else {
+                continue;
+            };
+            match crate::inject_value::begin_resolve_value(
+                &self.own_scope,
+                diagnostics,
+                self.depth + 1,
+                child_element,
+            ) {
+                ValueStep::Resolved(Some(value)) => self.items.push(*value),
+                ValueStep::Resolved(None) => {}
+                ValueStep::Deferred(frame) => return Advance::Push(frame),
             }
         }
     }
-    let value_type = class_ref_from_attr(&element.attrs, "value-type");
-    let merge = find_bool_attr(&element.attrs, "merge");
-    (items, value_type, merge)
+
+    // `value: Box<InjectValue>`, not `InjectValue` — matches
+    // `crate::depth_engine::Frame::deliver`'s own shared dispatch (one
+    // `value` binding forwarded to whichever frame kind is on top), even
+    // though this particular frame kind only ever unboxes it immediately.
+    #[allow(clippy::boxed_local)]
+    pub(crate) fn deliver(&mut self, value: Box<InjectValue>) -> crate::depth_engine::Advance<'a> {
+        self.items.push(*value);
+        crate::depth_engine::Advance::Continue
+    }
+
+    pub(crate) fn finish(self) -> Box<InjectValue> {
+        let collection = match self.kind {
+            ListLikeKind::List => Collection::List {
+                items: self.items,
+                value_type: self.value_type,
+                merge: self.merge,
+            },
+            ListLikeKind::Set => Collection::Set {
+                items: self.items,
+                value_type: self.value_type,
+                merge: self.merge,
+            },
+            ListLikeKind::Array => Collection::Array {
+                items: self.items,
+                value_type: self.value_type,
+                merge: self.merge,
+            },
+        };
+        Box::new(box_collection_inject_value(collection, self.span))
+    }
 }
 
 // ---------------------------------------------------------------------
 // <map>.
+//
+// I3 P0 stack-diet fallback: `parse_map` (former recursive entry loop,
+// removed) is replaced by `MapFrame` below — see `crate::depth_engine`'s
+// own module doc comment for the full picture.
 // ---------------------------------------------------------------------
 
 /// `<map key-type="..." value-type="..." merge="...">` — `key-type` and
@@ -156,161 +322,450 @@ fn parse_list_like(
 /// `Collection::Map` variant itself; a per-`<entry>` `value-type` override
 /// lands on that entry's own `MapEntry::value_type` instead (see
 /// `parse_map_entry`).
-fn parse_map(
-    scope: &NsScope,
-    diagnostics: &mut Vec<Diagnostic>,
+///
+/// One in-progress `<map>` — see this section's own doc comment.
+/// `entry_state`, when `Some`, is the in-progress `<entry>` at
+/// `children[idx - 1]`; `<map>`'s own children loop only advances past an
+/// `<entry>` once that entry's own scan (key + value, each possibly
+/// recursive — see [`EntryScan`]) has fully finished, matching the former
+/// `parse_map`/`parse_map_entry` pair's own strict "one entry at a time, in
+/// document order" serialization.
+pub(crate) struct MapFrame<'a> {
+    own_scope: NsScope,
+    children: &'a [XmlNode],
+    idx: usize,
     depth: u32,
-    element: &XmlElement,
-) -> Collection {
-    let own_scope = NsScope::from_element(element, Some(scope));
-    let key_type = class_ref_from_attr(&element.attrs, "key-type");
-    let value_type = class_ref_from_attr(&element.attrs, "value-type");
-    let merge = find_bool_attr(&element.attrs, "merge");
+    entries: Vec<MapEntry>,
+    key_type: Option<Spanned<ClassRef>>,
+    value_type: Option<Spanned<ClassRef>>,
+    merge: Option<bool>,
+    span: crate::model::ByteSpan,
+    entry_state: Option<EntryScan<'a>>,
+}
 
-    let mut entries = Vec::new();
-    for child in &element.children {
-        if let XmlNode::Element(child_element) = child {
-            // Per standard XML namespace scoping, a `xmlns`/`xmlns:*`
-            // declaration on `<entry>` itself applies to that element's own
-            // name — overlay the child's own declarations before resolving
-            // it, same as `dispatch_root_child`/`dispatch_bean_child` do for
-            // their own children (see those functions' doc comments).
-            let child_scope = NsScope::from_element(child_element, Some(&own_scope));
-            let (ns, local) = resolve_qname(&child_element.name, &child_scope);
-            if local == "entry" && is_beans_ns(&ns) {
-                entries.push(parse_map_entry(
-                    &own_scope,
-                    diagnostics,
-                    depth + 1,
+impl<'a> MapFrame<'a> {
+    /// `depth` here is the map's own (unincremented) depth — same as
+    /// `parse_map`'s former `depth` parameter; entries are scanned at
+    /// `depth + 1` (see [`EntryScan::new`]'s call site in [`Self::step`]),
+    /// matching that function's own `depth + 1` call into `parse_map_entry`.
+    pub(crate) fn new(scope: &NsScope, element: &'a XmlElement, depth: u32) -> Self {
+        let own_scope = NsScope::from_element(element, Some(scope));
+        let (key_type, value_type, merge) = resolve_map_attrs(element);
+        MapFrame {
+            own_scope,
+            children: &element.children,
+            idx: 0,
+            depth,
+            entries: Vec::new(),
+            key_type,
+            value_type,
+            merge,
+            span: element.span,
+            entry_state: None,
+        }
+    }
+
+    pub(crate) fn step(
+        &mut self,
+        diagnostics: &mut Vec<Diagnostic>,
+    ) -> crate::depth_engine::Advance<'a> {
+        use crate::depth_engine::Advance;
+        loop {
+            if let Some(entry) = &mut self.entry_state {
+                match entry.step(diagnostics) {
+                    Advance::Finished => {
+                        let entry = self.entry_state.take().expect("just matched Some above");
+                        entry.finish(diagnostics, &mut self.entries);
+                        continue;
+                    }
+                    other => return other,
+                }
+            }
+            let Some(child) = self.children.get(self.idx) else {
+                return Advance::Finished;
+            };
+            self.idx += 1;
+            let XmlNode::Element(child_element) = child else {
+                continue;
+            };
+            if child_is_map_entry(&self.own_scope, child_element) {
+                self.entry_state = Some(EntryScan::new(
+                    &self.own_scope,
                     child_element,
+                    self.depth + 1,
+                    diagnostics,
                 ));
             }
         }
     }
 
-    Collection::Map {
-        entries,
-        key_type,
-        value_type,
-        merge,
+    pub(crate) fn deliver(
+        &mut self,
+        value: Box<InjectValue>,
+        _diagnostics: &mut Vec<Diagnostic>,
+    ) -> crate::depth_engine::Advance<'a> {
+        self.entry_state
+            .as_mut()
+            .expect("MapFrame delivered without an in-progress <entry>")
+            .deliver(value)
+    }
+
+    pub(crate) fn finish(self) -> Box<InjectValue> {
+        Box::new(box_collection_inject_value(
+            Collection::Map {
+                entries: self.entries,
+                key_type: self.key_type,
+                value_type: self.value_type,
+                merge: self.merge,
+            },
+            self.span,
+        ))
     }
 }
 
-/// `<entry key= key-ref= value= value-ref= value-type=>`, plus the `<key>`
-/// element form and a value-shaped child element. Precedence (both key and
-/// value independently): the literal attribute wins, then the `-ref`
-/// attribute, then a resolved child, then (nothing at all present) an
-/// opaque `InjectValue::Null` at the entry's own span — same "never a
-/// missing value, never a panic" fallback `property::resolve_value`
-/// documents for `<property>`. Both `key`+`key-ref` and `value`+`value-ref`
-/// present together raise `ConflictingValueAndRef` (additive — some
-/// deterministic value/key is still produced), the same diagnostic
-/// `property::parse_property` raises for its own `value=`/`ref=` pair.
+/// `<map key-type= value-type= merge=>` attribute reads — unchanged from
+/// before this fix (still shared by [`MapFrame::new`]).
+#[inline(never)]
+fn resolve_map_attrs(
+    element: &XmlElement,
+) -> (
+    Option<Spanned<ClassRef>>,
+    Option<Spanned<ClassRef>>,
+    Option<bool>,
+) {
+    let key_type = class_ref_from_attr(&element.attrs, "key-type");
+    let value_type = class_ref_from_attr(&element.attrs, "value-type");
+    let merge = find_bool_attr(&element.attrs, "merge");
+    (key_type, value_type, merge)
+}
+
+/// Whether `child_element` resolves (under `scope`) to an `<entry>` element
+/// in the beans namespace — split out of [`parse_map`]'s loop purely for
+/// stack-diet framing, see that loop's own call-site comment. Per standard
+/// XML namespace scoping, a `xmlns`/`xmlns:*` declaration on `<entry>`
+/// itself applies to that element's own name — overlay the child's own
+/// declarations before resolving it, same as `dispatch_root_child`/
+/// `dispatch_bean_child` do for their own children (see those functions'
+/// doc comments).
+#[inline(never)]
+fn child_is_map_entry(scope: &NsScope, child_element: &XmlElement) -> bool {
+    let child_scope = NsScope::from_element(child_element, Some(scope));
+    // Kept as one `qn: (String, String)` binding rather than destructured
+    // `let (ns, local) = ..` — stack-diet micro-optimization, see
+    // `property::parse_property`'s own matching comment for the empirical
+    // (MIR-dump-confirmed) rationale.
+    let qn = resolve_qname(&child_element.name, &child_scope);
+    qn.1 == "entry" && is_beans_ns(&qn.0)
+}
+
+/// One in-progress `<entry key= key-ref= value= value-ref= value-type=>`,
+/// plus the `<key>` element form and a value-shaped child element —
+/// replaces the former `parse_map_entry`/`resolve_first_child_value` pair
+/// (removed; see `crate::depth_engine`'s own module doc comment for the
+/// full picture). Precedence (both key and value independently): the
+/// literal attribute wins, then the `-ref` attribute, then a resolved
+/// child, then (nothing at all present) an opaque `InjectValue::Null` at
+/// the entry's own span — same "never a missing value, never a panic"
+/// fallback `property::resolve_value` documents for `<property>`. Both
+/// `key`+`key-ref` and `value`+`value-ref` present together raise
+/// `ConflictingValueAndRef` (additive — some deterministic value/key is
+/// still produced), the same diagnostic `property::parse_property` raises
+/// for its own `value=`/`ref=` pair.
 ///
-/// `depth` here is already one hop past the owning `<map>` (see
-/// `parse_map`'s call site) — passed through unchanged into both the
-/// `<key>` child and the entry's own value child, since `<entry>`/`<key>`
+/// `depth` (see [`Self::new`]) is already one hop past the owning `<map>`
+/// (`MapFrame::step`'s own call site) — passed through unchanged into both
+/// the `<key>` child and the entry's own value child, since `<entry>`/`<key>`
 /// are wrapper elements, not themselves a nesting hop (this module's own
 /// doc comment).
-fn parse_map_entry(
-    scope: &NsScope,
-    diagnostics: &mut Vec<Diagnostic>,
+///
+/// Re-entrant `<key>` resolution rule (preserved exactly from
+/// `parse_map_entry`'s own former loop): a `<key>` element is only ever
+/// *attempted* while `key_child` is still `None` — since that stays `None`
+/// whether no `<key>` has been seen yet *or* the first `<key>` found had no
+/// resolvable child of its own (`<key></key>`, `<key>text</key>`), a
+/// **second** `<key>` sibling later in `element`'s own children can still
+/// get its own attempt. This is why [`Self::step`] below is a genuine
+/// resumable scan over `element`'s own children (not a two-phase
+/// classify-then-resolve split, unlike [`crate::bean::BeanFrame`]'s own
+/// `<meta>`/value-candidate handling, whose "first non-meta child" choice
+/// never depends on that candidate's own resolution *outcome* the way this
+/// one's `<key>` retry does).
+struct EntryScan<'a> {
+    own_scope: NsScope,
+    key_attr: Option<&'a XmlAttr>,
+    key_ref_attr: Option<&'a XmlAttr>,
+    value_attr: Option<&'a XmlAttr>,
+    value_ref_attr: Option<&'a XmlAttr>,
+    value_type: Option<Spanned<ClassRef>>,
+    span: crate::model::ByteSpan,
+    children: &'a [XmlNode],
+    idx: usize,
     depth: u32,
-    element: &XmlElement,
-) -> MapEntry {
-    let own_scope = NsScope::from_element(element, Some(scope));
+    key_child: Option<Box<InjectValue>>,
+    value_child: Option<Box<InjectValue>>,
+    seen_value_child: bool,
+    waiting: Option<EntryWaiting>,
+}
 
-    let key_attr = find_attr(&element.attrs, "key");
-    let key_ref_attr = find_attr(&element.attrs, "key-ref");
-    if key_attr.is_some() && key_ref_attr.is_some() {
-        diagnostics.push(Diagnostic {
-            code: DiagCode::ConflictingValueAndRef,
-            span: Some(element.span),
-            message: "<entry> specifies both key= and key-ref=".to_string(),
-        });
+/// Which of an [`EntryScan`]'s two slots a deferred sub-resolution (pushed
+/// via [`EntryScan::step`]) will fill in once it's delivered back.
+enum EntryWaiting {
+    Key,
+    Value,
+}
+
+impl<'a> EntryScan<'a> {
+    fn new(
+        scope: &NsScope,
+        element: &'a XmlElement,
+        depth: u32,
+        diagnostics: &mut Vec<Diagnostic>,
+    ) -> Self {
+        let own_scope = NsScope::from_element(element, Some(scope));
+        let key_attr = find_attr(&element.attrs, "key");
+        let key_ref_attr = find_attr(&element.attrs, "key-ref");
+        if key_attr.is_some() && key_ref_attr.is_some() {
+            push_map_entry_key_conflict(diagnostics, element.span);
+        }
+        let value_attr = find_attr(&element.attrs, "value");
+        let value_ref_attr = find_attr(&element.attrs, "value-ref");
+        if value_attr.is_some() && value_ref_attr.is_some() {
+            push_map_entry_value_conflict(diagnostics, element.span);
+        }
+        let value_type = class_ref_from_attr(&element.attrs, "value-type");
+        EntryScan {
+            own_scope,
+            key_attr,
+            key_ref_attr,
+            value_attr,
+            value_ref_attr,
+            value_type,
+            span: element.span,
+            children: &element.children,
+            idx: 0,
+            depth,
+            key_child: None,
+            value_child: None,
+            seen_value_child: false,
+            waiting: None,
+        }
     }
-    let value_attr = find_attr(&element.attrs, "value");
-    let value_ref_attr = find_attr(&element.attrs, "value-ref");
-    if value_attr.is_some() && value_ref_attr.is_some() {
-        diagnostics.push(Diagnostic {
-            code: DiagCode::ConflictingValueAndRef,
-            span: Some(element.span),
-            message: "<entry> specifies both value= and value-ref=".to_string(),
-        });
-    }
-    let value_type = class_ref_from_attr(&element.attrs, "value-type");
 
-    let mut key_child: Option<InjectValue> = None;
-    let mut value_child: Option<InjectValue> = None;
-    let mut seen_value_child = false;
-
-    for child in &element.children {
-        let XmlNode::Element(child_element) = child else {
-            continue;
-        };
-        // Overlay `child_element`'s own `xmlns`/`xmlns:*` before resolving
-        // its name — same namespace-scoping fix `parse_map`'s own
-        // `<entry>` detection applies (see that call site's comment).
-        let child_scope = NsScope::from_element(child_element, Some(&own_scope));
-        let (ns, local) = resolve_qname(&child_element.name, &child_scope);
-        if local == "key" && is_beans_ns(&ns) {
-            if key_child.is_none() {
-                key_child =
-                    resolve_first_child_value(&own_scope, diagnostics, depth, child_element);
+    fn step(&mut self, diagnostics: &mut Vec<Diagnostic>) -> crate::depth_engine::Advance<'a> {
+        use crate::depth_engine::Advance;
+        use crate::inject_value::ValueStep;
+        debug_assert!(self.waiting.is_none());
+        loop {
+            let Some(child) = self.children.get(self.idx) else {
+                return Advance::Finished;
+            };
+            self.idx += 1;
+            let XmlNode::Element(child_element) = child else {
+                continue;
+            };
+            if child_is_map_key(&self.own_scope, child_element) {
+                if self.key_child.is_some() {
+                    continue;
+                }
+                // `resolve_first_child_value`'s former job: only the
+                // `<key>` element's own *first* child element is ever
+                // resolved, under `<key>`'s own overlay (not the entry's) —
+                // `<key>` may carry its own `xmlns`/`xmlns:*` declarations.
+                let key_scope = NsScope::from_element(child_element, Some(&self.own_scope));
+                let Some(inner) = first_child_element(child_element) else {
+                    continue; // key_child stays None; a later <key> may still try.
+                };
+                match crate::inject_value::begin_resolve_value(
+                    &key_scope,
+                    diagnostics,
+                    self.depth,
+                    inner,
+                ) {
+                    ValueStep::Resolved(value) => self.key_child = value,
+                    ValueStep::Deferred(frame) => {
+                        self.waiting = Some(EntryWaiting::Key);
+                        return Advance::Push(frame);
+                    }
+                }
+                continue;
             }
-            continue;
-        }
-        // The first non-`<key>` child element is this entry's value —
-        // mirrors `property::parse_property`'s "only the first ... child is
-        // resolved" leniency (the XSD only ever allows one).
-        if !seen_value_child {
-            seen_value_child = true;
-            value_child = parse_inject_value_child(&own_scope, diagnostics, depth, child_element);
+            // The first non-`<key>` child element is this entry's value —
+            // mirrors `property::parse_property`'s "only the first ...
+            // child is resolved" leniency (the XSD only ever allows one).
+            if !self.seen_value_child {
+                self.seen_value_child = true;
+                match crate::inject_value::begin_resolve_value(
+                    &self.own_scope,
+                    diagnostics,
+                    self.depth,
+                    child_element,
+                ) {
+                    ValueStep::Resolved(value) => self.value_child = value,
+                    ValueStep::Deferred(frame) => {
+                        self.waiting = Some(EntryWaiting::Value);
+                        return Advance::Push(frame);
+                    }
+                }
+            }
         }
     }
 
-    let key = key_attr
+    fn deliver(&mut self, value: Box<InjectValue>) -> crate::depth_engine::Advance<'a> {
+        match self
+            .waiting
+            .take()
+            .expect("EntryScan delivered without a pending key/value wait")
+        {
+            EntryWaiting::Key => self.key_child = Some(value),
+            EntryWaiting::Value => self.value_child = Some(value),
+        }
+        crate::depth_engine::Advance::Continue
+    }
+
+    /// Consumes this finished entry, pushing the assembled [`MapEntry`]
+    /// onto `entries` — `MapFrame::step`'s own call site, once this entry's
+    /// `step` has returned `Advance::Finished`.
+    fn finish(self, diagnostics: &mut Vec<Diagnostic>, entries: &mut Vec<MapEntry>) {
+        finish_map_entry(
+            self.span,
+            self.key_attr,
+            self.key_ref_attr,
+            self.value_attr,
+            self.value_ref_attr,
+            self.value_type,
+            self.key_child,
+            self.value_child,
+            diagnostics,
+            entries,
+        );
+    }
+}
+
+/// The first direct child *element* of `element` (skipping text/CDATA
+/// runs), or `None` if it has none — [`EntryScan::step`]'s own `<key>`
+/// handling, same "only the first child element found is ever resolved"
+/// leniency the former `resolve_first_child_value` documented.
+fn first_child_element(element: &XmlElement) -> Option<&XmlElement> {
+    element.children.iter().find_map(|c| match c {
+        XmlNode::Element(e) => Some(e),
+        XmlNode::Text(_) => None,
+    })
+}
+
+/// Whether `child_element` resolves (under `scope`) to a `<key>` element in
+/// the beans namespace — same namespace-scoping fix `parse_map`'s own
+/// `<entry>` detection (`child_is_map_entry`) applies (see that function's
+/// own doc comment).
+#[inline(never)]
+fn child_is_map_key(scope: &NsScope, child_element: &XmlElement) -> bool {
+    let child_scope = NsScope::from_element(child_element, Some(scope));
+    // Kept as one `qn: (String, String)` binding rather than destructured
+    // `let (ns, local) = ..` — stack-diet micro-optimization, see
+    // `property::parse_property`'s own matching comment for the empirical
+    // (MIR-dump-confirmed) rationale.
+    let qn = resolve_qname(&child_element.name, &child_scope);
+    qn.1 == "key" && is_beans_ns(&qn.0)
+}
+
+/// `key=`/`key-ref=` `ConflictingValueAndRef` diagnostic push — split out of
+/// [`parse_map_entry`] purely for stack-diet framing, see that function's
+/// own doc comment.
+#[inline(never)]
+fn push_map_entry_key_conflict(diagnostics: &mut Vec<Diagnostic>, span: crate::model::ByteSpan) {
+    diagnostics.push(Diagnostic {
+        code: DiagCode::ConflictingValueAndRef,
+        span: Some(span),
+        message: "<entry> specifies both key= and key-ref=".to_string(),
+    });
+}
+
+/// `value=`/`value-ref=` `ConflictingValueAndRef` diagnostic push — split
+/// out of [`parse_map_entry`] purely for stack-diet framing, see that
+/// function's own doc comment.
+#[inline(never)]
+fn push_map_entry_value_conflict(diagnostics: &mut Vec<Diagnostic>, span: crate::model::ByteSpan) {
+    diagnostics.push(Diagnostic {
+        code: DiagCode::ConflictingValueAndRef,
+        span: Some(span),
+        message: "<entry> specifies both value= and value-ref=".to_string(),
+    });
+}
+
+/// Final key/value precedence resolution + [`MapEntry`] assembly — split
+/// out of [`parse_map_entry`] purely for stack-diet framing, same rationale
+/// `property::finish_property` documents (only ever runs after this
+/// entry's own child loop, and any recursion reached through it, has fully
+/// returned). The key/value precedence resolution itself is further split
+/// into [`resolve_map_entry_key`]/[`resolve_map_entry_value`] — measured
+/// (via `otool -tv` disassembly of a debug build) at a combined ~2KB for
+/// this function before that split: each `.map(..).or_else(..).or(..)`
+/// chain constructs up to three separate `InjectValue`-shaped payloads
+/// (~120 bytes apiece — `Value`/`Ref`/the resolved child), and with *two*
+/// such chains (key and value) inline in one function, all of those
+/// temporaries summed into one frame at `-O0`, same "match arm" reservation
+/// issue `inject_value::parse_inject_value_child_boxed`'s doc comment
+/// documents for a different function shape.
+#[allow(clippy::too_many_arguments)]
+#[inline(never)]
+fn finish_map_entry(
+    span: crate::model::ByteSpan,
+    key_attr: Option<&XmlAttr>,
+    key_ref_attr: Option<&XmlAttr>,
+    value_attr: Option<&XmlAttr>,
+    value_ref_attr: Option<&XmlAttr>,
+    value_type: Option<Spanned<ClassRef>>,
+    key_child: Option<Box<InjectValue>>,
+    value_child: Option<Box<InjectValue>>,
+    diagnostics: &mut Vec<Diagnostic>,
+    entries: &mut Vec<MapEntry>,
+) {
+    let key = resolve_map_entry_key(key_attr, key_ref_attr, key_child, diagnostics, span);
+    let value = resolve_map_entry_value(value_attr, value_ref_attr, value_child, diagnostics, span);
+
+    entries.push(MapEntry {
+        span,
+        key,
+        value,
+        value_type,
+    });
+}
+
+/// This entry's `key` precedence chain — split out of [`finish_map_entry`]
+/// purely for stack-diet framing, see that function's own doc comment.
+#[inline(never)]
+fn resolve_map_entry_key(
+    key_attr: Option<&XmlAttr>,
+    key_ref_attr: Option<&XmlAttr>,
+    key_child: Option<Box<InjectValue>>,
+    diagnostics: &mut Vec<Diagnostic>,
+    span: crate::model::ByteSpan,
+) -> InjectValue {
+    key_attr
         .map(|attr| InjectValue::Value(value_lit_from_attr(attr)))
         .or_else(|| {
             key_ref_attr.and_then(|attr| ref_from_attr(attr, diagnostics).map(InjectValue::Ref))
         })
-        .or(key_child)
-        .unwrap_or(InjectValue::Null(element.span));
+        .or(key_child.map(|b| *b))
+        .unwrap_or(InjectValue::Null(span))
+}
 
-    let value = value_attr
+/// This entry's `value` precedence chain — split out of [`finish_map_entry`]
+/// purely for stack-diet framing, see that function's own doc comment.
+#[inline(never)]
+fn resolve_map_entry_value(
+    value_attr: Option<&XmlAttr>,
+    value_ref_attr: Option<&XmlAttr>,
+    value_child: Option<Box<InjectValue>>,
+    diagnostics: &mut Vec<Diagnostic>,
+    span: crate::model::ByteSpan,
+) -> InjectValue {
+    value_attr
         .map(|attr| InjectValue::Value(value_lit_from_attr(attr)))
         .or_else(|| {
             value_ref_attr.and_then(|attr| ref_from_attr(attr, diagnostics).map(InjectValue::Ref))
         })
-        .or(value_child)
-        .unwrap_or(InjectValue::Null(element.span));
-
-    MapEntry {
-        span: element.span,
-        key,
-        value,
-        value_type,
-    }
-}
-
-/// `<key>...</key>` wraps exactly one value-shaped (or collection-shaped)
-/// child per the XSD; this crate has no schema view, so — same leniency
-/// `ref_from_element`'s own doc comment documents for `<ref>`'s
-/// bean=/local=/parent= triad — only the first child element found is ever
-/// resolved, whatever it is.
-fn resolve_first_child_value(
-    scope: &NsScope,
-    diagnostics: &mut Vec<Diagnostic>,
-    depth: u32,
-    element: &XmlElement,
-) -> Option<InjectValue> {
-    let own_scope = NsScope::from_element(element, Some(scope));
-    for child in &element.children {
-        if let XmlNode::Element(child_element) = child {
-            return parse_inject_value_child(&own_scope, diagnostics, depth, child_element);
-        }
-    }
-    None
+        .or(value_child.map(|b| *b))
+        .unwrap_or(InjectValue::Null(span))
 }
 
 // ---------------------------------------------------------------------
@@ -323,7 +778,7 @@ fn resolve_first_child_value(
 /// `diagnostics` needed: a `<prop>` value is always a plain literal (the
 /// XSD gives it no ref/inner/nested-collection form), so there is nothing
 /// here that can recurse or need a `RefWithoutTarget`-shaped diagnostic.
-fn parse_props(scope: &NsScope, element: &XmlElement) -> Collection {
+pub(crate) fn parse_props(scope: &NsScope, element: &XmlElement) -> Collection {
     let own_scope = NsScope::from_element(element, Some(scope));
     let merge = find_bool_attr(&element.attrs, "merge");
     let mut entries = Vec::new();

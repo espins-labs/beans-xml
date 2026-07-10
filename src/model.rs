@@ -827,7 +827,19 @@ impl BeansFileCtx {
     /// Final, infallible assembly — moves every accumulated field into a
     /// `BeansFile`. Never fails: by construction every field here has the
     /// exact shape `BeansFile` expects.
-    pub(crate) fn into_beans_file(self) -> BeansFile {
+    ///
+    /// **Stack-diet note** (I3 P0 Windows `STATUS_STACK_OVERFLOW` fix): takes
+    /// `self: Box<Self>`, not `self: Self`, on purpose. `dispatch::parse_beans_body`
+    /// (this seam's only production builder) already heap-allocates its
+    /// `ctx: Box<BeansFileCtx>` — calling a by-value `self` method on a
+    /// `Box<T>` still has to materialize a whole `T`-sized copy as the call's
+    /// argument (confirmed empirically via `otool -tv` disassembly of a
+    /// debug build: a `memcpy` sized to this struct, immediately followed by
+    /// the call), which is exactly the ~376-byte-per-recursive-frame cost
+    /// this whole fix removes everywhere else. Accepting `Box<Self>` directly
+    /// lets field reads go straight through the existing heap pointer
+    /// instead.
+    pub(crate) fn into_beans_file(self: Box<Self>) -> BeansFile {
         BeansFile {
             span: self.span,
             profile: self.profile,
@@ -883,8 +895,11 @@ pub(crate) struct BeanCtx {
 }
 
 impl BeanCtx {
-    /// Final, infallible assembly — see `BeansFileCtx::into_beans_file`.
-    pub(crate) fn into_bean(self) -> Bean {
+    /// Final, infallible assembly — see `BeansFileCtx::into_beans_file`,
+    /// including that same doc comment's `self: Box<Self>` stack-diet
+    /// rationale (`bean::parse_bean` is this seam's own heap-allocated
+    /// builder).
+    pub(crate) fn into_bean(self: Box<Self>) -> Bean {
         Bean {
             span: self.span,
             id: self.id,
@@ -932,13 +947,13 @@ mod tests {
             value: "myBean".to_string(),
             span: ByteSpan { start: 1, end: 7 },
         });
-        let bean = bean_ctx.into_bean();
+        let bean = Box::new(bean_ctx).into_bean();
         assert_eq!(bean.id.as_ref().map(|s| s.value.as_str()), Some("myBean"));
         assert!(!bean.abstract_);
 
         let mut file_ctx = BeansFileCtx::default();
         file_ctx.beans.push(bean);
-        let file = file_ctx.into_beans_file();
+        let file = Box::new(file_ctx).into_beans_file();
         assert_eq!(file.beans.len(), 1);
         assert_eq!(file.beans[0].id.as_ref().unwrap().value, "myBean");
     }

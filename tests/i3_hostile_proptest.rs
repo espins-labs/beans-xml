@@ -170,26 +170,34 @@ fn chain(open: &str, close: &str, count: usize, leaf: &str) -> String {
     s
 }
 
-#[test]
-fn i3_hostile_fixtures_never_panic() {
-    let over_limit = DEPTH_LIMIT as usize + 20;
-
+/// Builds the four `deep_*` shapes (`list`/`inner_bean`/`profile`/`map`
+/// nesting, each `depth` levels deep) that stress the two `DEPTH_LIMIT`-
+/// guarded recursion axes this crate has (bean/property/constructor-arg
+/// mutual recursion, `dispatch::parse_nested_beans`'s own `<beans
+/// profile>` recursion, and list/set/array/map self-recursion) — shared by
+/// [`i3_hostile_fixtures_never_panic`] (`depth` = `DEPTH_LIMIT + 20`,
+/// hostile — over the limit, `NestingLimitExceeded` expected) and
+/// [`i3_p0_deep_semantic_recursion_small_stack_does_not_overflow`]
+/// (`depth` = `DEPTH_LIMIT - 1`, the maximum *legal* depth — a fully valid
+/// document, no diagnostic expected). Order: `deep_list`, `deep_inner_bean`,
+/// `deep_profile`, `deep_map` (matches both callers' own loops).
+fn deep_fixtures(depth: usize) -> [(&'static str, String); 4] {
     let deep_list = format!(
         "<beans><bean class=\"com.example.A\"><property name=\"p\">{}</property></bean></beans>",
-        chain("<list>", "</list>", over_limit, "<value>leaf</value>")
+        chain("<list>", "</list>", depth, "<value>leaf</value>")
     );
     let deep_inner_bean = format!(
         "<beans><bean class=\"com.example.A\">{}</bean></beans>",
         chain(
             "<property name=\"p\"><bean class=\"com.example.A\">",
             "</bean></property>",
-            over_limit,
+            depth,
             "<property name=\"leaf\" value=\"x\"/>",
         )
     );
     let deep_profile = format!(
         "<beans>{}</beans>",
-        chain("<beans profile=\"p\">", "</beans>", over_limit, "")
+        chain("<beans profile=\"p\">", "</beans>", depth, "")
     );
     let deep_map = format!(
         "<beans><bean class=\"com.example.A\"><property name=\"p\">{}</property></bean></beans>",
@@ -201,10 +209,23 @@ fn i3_hostile_fixtures_never_panic() {
         chain(
             "<map><entry key=\"k\">",
             "</entry></map>",
-            over_limit,
+            depth,
             "<map><entry key=\"leaf\" value=\"x\"/></map>",
         )
     );
+    [
+        ("deep_list", deep_list),
+        ("deep_inner_bean", deep_inner_bean),
+        ("deep_profile", deep_profile),
+        ("deep_map", deep_map),
+    ]
+}
+
+#[test]
+fn i3_hostile_fixtures_never_panic() {
+    let over_limit = DEPTH_LIMIT as usize + 20;
+    let [(_, deep_list), (_, deep_inner_bean), (_, deep_profile), (_, deep_map)] =
+        deep_fixtures(over_limit);
 
     let hostile_fixtures: &[&[u8]] = &[
         b"",
@@ -254,6 +275,88 @@ fn i3_hostile_fixtures_never_panic() {
             result.diagnostics
         );
     }
+}
+
+// ---------------------------------------------------------------------
+// I3 P0 stack-diet fallback regression: the bean/property/constructor-arg
+// <-> inner-bean mutual recursion and the list/set/array/map self-recursion
+// (both `DEPTH_LIMIT`-guarded) now run on `crate::depth_engine`'s explicit
+// heap stack rather than the real call stack — see that module's own
+// (`src/depth_engine.rs`) doc comment for the full picture. Frame-dieting
+// alone (boxing large locals, `#[inline(never)]`-splitting fat frames) was
+// tried first and *reduced* per-level stack cost, but measurement (this
+// fix's own `tests/scratch_stack_probe.rs`, a since-deleted scratch
+// harness — see this fix's commit message for the exact before/after
+// numbers, not duplicated here to avoid rot) showed it still could not
+// reach a 256 KiB thread budget at `DEPTH_LIMIT` levels for `deep_list`/
+// `deep_inner_bean`/`deep_map`, nor for a depth-(`DEPTH_LIMIT` - 1) *valid*
+// document — only `deep_profile` (a wholly separate recursion axis,
+// `dispatch::parse_nested_beans`, untouched by this fix) already fit.
+// Nothing here is redundant with `i3_p0_small_stack_thread_deeply_nested_input_does_not_overflow`
+// above: that test's own 60_000-deep `<foo>`/`<beans>` chains exercise
+// `events::build_tree`'s XmlElement tree construction/teardown depth (a
+// different, already-fixed recursion axis) and never reach the bean/
+// property/collection semantic walk at all (root detection, or
+// `NestingLimitExceeded` on the `<beans>` nesting itself, stops them first)
+// — this test is the one that would have failed against the pre-fallback
+// code.
+// ---------------------------------------------------------------------
+
+#[test]
+fn i3_p0_deep_semantic_recursion_small_stack_does_not_overflow() {
+    // Hostile: `DEPTH_LIMIT + 20` levels — must downgrade via
+    // `NestingLimitExceeded`, not overflow, on a 256 KiB thread.
+    let hostile = deep_fixtures(DEPTH_LIMIT as usize + 20);
+    // Valid: `DEPTH_LIMIT - 1` levels — the maximum *legal* depth. No
+    // diagnostic expected; the acceptance bar is that a real (not just
+    // hostile) document this deep still parses fully inside the budget.
+    let valid = deep_fixtures(DEPTH_LIMIT as usize - 1);
+
+    let handle = std::thread::Builder::new()
+        .name("i3-p0-deep-semantic-small-stack".to_string())
+        // Matches this crate's own acceptance bar (and
+        // `i3_p0_small_stack_thread_deeply_nested_input_does_not_overflow`'s
+        // own budget above) — comfortably below a Windows main thread's
+        // 1 MiB default, and small enough to also stand in for a small
+        // thread-pool worker, musl, or wasm.
+        .stack_size(256 * 1024)
+        .spawn(move || {
+            for (name, source) in &hostile {
+                let result = beans_xml::parse(source);
+                assert!(
+                    result
+                        .diagnostics
+                        .iter()
+                        .any(|d| d.code == DiagCode::NestingLimitExceeded),
+                    "{name} (hostile, {} levels) must trigger NestingLimitExceeded on a \
+                     256 KiB thread, not overflow: {:?}",
+                    DEPTH_LIMIT as usize + 20,
+                    result.diagnostics
+                );
+            }
+            for (name, source) in &valid {
+                let result = beans_xml::parse(source);
+                assert!(
+                    !result
+                        .diagnostics
+                        .iter()
+                        .any(|d| d.code == DiagCode::NestingLimitExceeded),
+                    "{name} at depth-(DEPTH_LIMIT - 1) (maximum legal depth) must parse fully \
+                     on a 256 KiB thread — no diagnostic expected: {:?}",
+                    result.diagnostics
+                );
+                assert!(
+                    result.beans.is_some(),
+                    "{name} at depth-(DEPTH_LIMIT - 1) must still produce a BeansFile"
+                );
+            }
+        })
+        .expect("spawning a 256 KiB thread should succeed");
+
+    handle.join().expect(
+        "256 KiB thread must not panic/overflow while parsing all four deep_* hostile shapes \
+         and a depth-(DEPTH_LIMIT - 1) valid document",
+    );
 }
 
 // ---------------------------------------------------------------------
