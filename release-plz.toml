@@ -1,0 +1,17 @@
+# release-plz config. Two packages in this workspace: beans-xml is
+# released to crates.io; beans-xml-wasm is distributed via npm
+# (wasm-pack), so it is excluded from crates.io releases below
+# (its Cargo.toml also sets publish = false).
+#
+# Dormant until a CARGO_REGISTRY_TOKEN repo secret is set -- until then
+# release-plz.yml has no token to publish with.
+[workspace]
+release = true
+git_release_enable = true
+changelog_update = true
+semver_check = true
+
+[[package]]
+name = "beans-xml-wasm"
+release = false
+publish = false  # npm-only crate; Cargo.toml also says publish = false -- keep release-plz consistent
