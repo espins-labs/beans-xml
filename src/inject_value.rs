@@ -540,19 +540,21 @@ fn idref_from_element(
 /// module's own doc comment for why the check lives here rather than in
 /// `bean::parse_bean` itself.
 ///
-/// **Stack-diet note** (I3 P0 Windows `STATUS_STACK_OVERFLOW` fix): this
-/// function itself is now a thin unboxing wrapper around
-/// [`parse_inject_value_child_boxed`] — see that function's own doc comment
-/// for the full rationale (per-arm `#[inline(never)]` helpers, each
-/// constructing its own `Box<InjectValue>` directly rather than boxing a
-/// separately-materialized `InjectValue` one level up). Kept as a separate,
-/// unboxed-signature function purely so this crate's existing test suite
-/// (which calls this exact function and pattern-matches an
-/// `Option<InjectValue>` directly, dozens of call sites below) keeps
-/// compiling untouched — every actual recursive production call site calls
-/// the boxed version instead, which is also why this is `#[cfg(test)]`:
-/// with every production caller migrated to the boxed version above, this
-/// one now has no non-test caller left at all.
+/// `#[cfg(test)]`: [`begin_resolve_value`] (the live engine-aware entry
+/// point every real production call site uses — `bean::BeanFrame::begin_property`/
+/// `begin_constructor_arg`, `collection::ListLikeFrame`/`collection::MapFrame`'s
+/// own item/entry resolution) never itself needs a bare, non-deferred
+/// `InjectValue` back — it either resolves immediately
+/// (`ValueStep::Resolved`) or hands the caller a [`crate::depth_engine::Frame`]
+/// to push (`ValueStep::Deferred`), leaving the driving loop to the caller's
+/// own `step`/`deliver`. This function exists purely so this crate's
+/// existing test suite (which calls this exact function and pattern-matches
+/// an `Option<InjectValue>` directly, dozens of call sites below) keeps
+/// compiling untouched: it drives a one-off [`crate::depth_engine::run`] to
+/// completion itself when `begin_resolve_value` defers, the same "push one
+/// frame, run the engine, unwrap the result" shape [`bean::parse_bean`](crate::bean::parse_bean)/
+/// [`collection::parse_collection_value`](crate::collection::parse_collection_value)
+/// use for their own top-level entry points.
 #[cfg(test)]
 pub(crate) fn parse_inject_value_child(
     scope: &NsScope,
@@ -560,84 +562,17 @@ pub(crate) fn parse_inject_value_child(
     depth: u32,
     element: &XmlElement,
 ) -> Option<InjectValue> {
-    parse_inject_value_child_boxed(scope, diagnostics, depth, element).map(|b| *b)
-}
-
-/// Same resolution as [`parse_inject_value_child`], returning
-/// `Option<Box<InjectValue>>` instead of `Option<InjectValue>` — this is
-/// the *real* implementation; the unboxed function above is a thin wrapper
-/// around this one.
-///
-/// **Stack-diet note** (I3 P0 Windows `STATUS_STACK_OVERFLOW` fix): every
-/// one of this crate's actual recursive call sites
-/// (`property::parse_property`, `constructor_arg::parse_constructor_arg`,
-/// `collection::parse_list_like`/`parse_map_entry`/`resolve_first_child_value`)
-/// wants a `Box<InjectValue>` anyway (to keep its own local no bigger than
-/// a pointer — `InjectValue` is a ~120-byte enum) and previously got there
-/// via `parse_inject_value_child(..).map(Box::new)`, which (confirmed
-/// empirically via `otool -tv` disassembly of a debug build) still
-/// materializes a full unboxed `InjectValue` in the *caller's* frame before
-/// boxing it (the same `-O0` `Box::new(f())` non-fusion `bean::new_bean_ctx`'s
-/// doc comment documents) — i.e. boxing one level too late to matter. Doing
-/// the boxing *here*, at the point of construction, keeps that temporary
-/// confined to each arm's own already-separate helper frame (see this
-/// function's own match, same per-arm-helper framing
-/// `parse_inject_value_child`'s doc comment explains) instead of also
-/// appearing again in every caller up the recursive chain.
-///
-/// **Stack-diet note, cont'd**: the actual classification (own overlay +
-/// `resolve_qname`) is further factored into [`classify_inject_value_child`]
-/// below, returning a small (`#[repr]`-default, 1-byte-ish) enum rather than
-/// leaving `child_scope: NsScope` (72 bytes) and the `qn: (String, String)`
-/// tuple (48 bytes) as this function's own locals. Neither is needed by any
-/// of the arms below (every recursive callee — `parse_inner_bean_boxed`,
-/// `resolve_collection_child_boxed` — takes the *original* `scope`, not
-/// `child_scope`; this element's own overlay is re-derived fresh inside
-/// each of those, same "callee re-derives its own overlay" convention
-/// `parse_inner_bean_boxed`'s doc comment documents), so unlike `own_scope`
-/// locals elsewhere in this crate's recursive chain (which *do* have to
-/// stay alive across a recursive call, and are boxed instead — see
-/// `bean::parse_bean`'s own `Box<BeanCtx>` treatment), this pair can be
-/// dropped entirely once classification is done. Moving that
-/// classification into its own `#[inline(never)]` helper confines the
-/// 120-byte cost to a frame that's fully popped before any of this
-/// function's own recursive descent begins, rather than reserved for this
-/// frame's entire (per-`DEPTH_LIMIT`-level) lifetime.
-pub(crate) fn parse_inject_value_child_boxed(
-    scope: &NsScope,
-    diagnostics: &mut Vec<Diagnostic>,
-    depth: u32,
-    element: &XmlElement,
-) -> Option<Box<InjectValue>> {
-    match classify_inject_value_child(scope, element) {
-        InjectValueChildKind::NotBeansNs | InjectValueChildKind::Unknown => None,
-        InjectValueChildKind::Value => Some(resolve_value_child_boxed(element)),
-        InjectValueChildKind::Ref => resolve_ref_child_boxed(element, diagnostics),
-        InjectValueChildKind::Idref => resolve_idref_child_boxed(element, diagnostics),
-        InjectValueChildKind::Null => Some(resolve_null_child_boxed(element)),
-        InjectValueChildKind::Bean => {
-            Some(parse_inner_bean_boxed(scope, diagnostics, depth, element))
-        }
-        // U5b (SB-07): collections. Wired directly into `crate::collection`
-        // — this is that module's own seam (U5a→U5b is a *serial*
-        // extension of this exact match, not a parallel leaf pair), not
-        // one of the frozen root-/bean-child dispatch matches the
-        // leaf-conflict-avoidance contract protects. `scope` (not the
-        // classification helper's own internal overlay) is passed through,
-        // same "callee re-derives its own overlay" convention
-        // `parse_inner_bean_boxed` below follows.
-        InjectValueChildKind::Collection => Some(resolve_collection_child_boxed(
-            scope,
-            diagnostics,
-            depth,
-            element,
-        )),
+    match begin_resolve_value(scope, diagnostics, depth, element) {
+        ValueStep::Resolved(value) => value.map(|b| *b),
+        ValueStep::Deferred(frame) => match crate::depth_engine::run(vec![*frame], diagnostics) {
+            crate::depth_engine::Completed::Bean(bean) => Some(*box_inner_inject_value(bean)),
+            crate::depth_engine::Completed::Value(value) => Some(*value),
+        },
     }
 }
-
-/// [`parse_inject_value_child_boxed`]'s own classification result — see
-/// that function's doc comment for why this is a separate small enum
-/// rather than the raw `(String, String)` qname tuple.
+/// [`begin_resolve_value`]'s own classification result — see that
+/// function's doc comment for why this is a separate small enum rather than
+/// the raw `(String, String)` qname tuple.
 enum InjectValueChildKind {
     NotBeansNs,
     Value,
@@ -650,15 +585,15 @@ enum InjectValueChildKind {
 }
 
 /// `element`'s own overlay + `resolve_qname` classification — split out of
-/// [`parse_inject_value_child_boxed`] purely for stack-diet framing, see
-/// that function's own doc comment.
+/// [`begin_resolve_value`] purely for stack-diet framing, see that
+/// function's own doc comment.
 #[inline(never)]
 fn classify_inject_value_child(scope: &NsScope, element: &XmlElement) -> InjectValueChildKind {
     let child_scope = NsScope::from_element(element, Some(scope));
     // Kept as one `qn: (String, String)` binding rather than destructured
     // `let (ns, local) = ..` — stack-diet micro-optimization, see
-    // `property::parse_property`'s own matching comment for the empirical
-    // (MIR-dump-confirmed) rationale.
+    // `dispatch::dispatch_root_child`'s own matching comment for the
+    // empirical (MIR-dump-confirmed) rationale.
     let qn = resolve_qname(&element.name, &child_scope);
     if !is_beans_ns(&qn.0) {
         return InjectValueChildKind::NotBeansNs;
@@ -674,49 +609,26 @@ fn classify_inject_value_child(scope: &NsScope, element: &XmlElement) -> InjectV
     }
 }
 
-/// `"null"` arm, boxed — split out of [`parse_inject_value_child_boxed`]'s
-/// match purely for stack-diet framing, see that function's own doc
-/// comment. (Trivial payload — `ByteSpan` is 8 bytes — but still goes
-/// through the same `Box::new(f())` non-fusion at `-O0`
-/// `parse_inject_value_child_boxed`'s doc comment documents, so still
-/// worth its own frame rather than inline in the match.)
+/// `"null"` arm, boxed — split out of [`begin_resolve_value`]'s match
+/// purely for stack-diet framing, see that function's own doc comment.
+/// (Trivial payload — `ByteSpan` is 8 bytes — but still goes through the
+/// same `Box::new(f())` non-fusion at `-O0` `bean::new_bean_ctx`'s doc
+/// comment documents, so still worth its own frame rather than inline in
+/// the match.)
 #[inline(never)]
 fn resolve_null_child_boxed(element: &XmlElement) -> Box<InjectValue> {
     Box::new(InjectValue::Null(element.span))
 }
 
-/// `"list"`/`"set"`/`"array"`/`"map"`/`"props"` arm, boxed — split out of
-/// [`parse_inject_value_child_boxed`]'s match purely for stack-diet
-/// framing, see that function's own doc comment: `parse_collection_value`
-/// returns an unboxed `InjectValue` (~120 bytes) that still needs boxing
-/// here, so this stays its own frame rather than being folded into the
-/// match arm directly.
-#[inline(never)]
-fn resolve_collection_child_boxed(
-    scope: &NsScope,
-    diagnostics: &mut Vec<Diagnostic>,
-    depth: u32,
-    element: &XmlElement,
-) -> Box<InjectValue> {
-    Box::new(crate::collection::parse_collection_value(
-        scope,
-        diagnostics,
-        depth,
-        element,
-    ))
-}
-
-/// `"value"` arm, boxed — split out of [`parse_inject_value_child_boxed`]'s
-/// match purely for stack-diet framing, see that function's own doc
-/// comment.
+/// `"value"` arm, boxed — split out of [`begin_resolve_value`]'s match
+/// purely for stack-diet framing, see that function's own doc comment.
 #[inline(never)]
 fn resolve_value_child_boxed(element: &XmlElement) -> Box<InjectValue> {
     Box::new(InjectValue::Value(value_lit_from_element(element)))
 }
 
-/// `"ref"` arm, boxed — split out of [`parse_inject_value_child_boxed`]'s
-/// match purely for stack-diet framing, see that function's own doc
-/// comment.
+/// `"ref"` arm, boxed — split out of [`begin_resolve_value`]'s match purely
+/// for stack-diet framing, see that function's own doc comment.
 #[inline(never)]
 fn resolve_ref_child_boxed(
     element: &XmlElement,
@@ -725,9 +637,8 @@ fn resolve_ref_child_boxed(
     ref_from_element(element, diagnostics).map(|r| Box::new(InjectValue::Ref(r)))
 }
 
-/// `"idref"` arm, boxed — split out of [`parse_inject_value_child_boxed`]'s
-/// match purely for stack-diet framing, see that function's own doc
-/// comment.
+/// `"idref"` arm, boxed — split out of [`begin_resolve_value`]'s match
+/// purely for stack-diet framing, see that function's own doc comment.
 #[inline(never)]
 fn resolve_idref_child_boxed(
     element: &XmlElement,
@@ -736,66 +647,21 @@ fn resolve_idref_child_boxed(
     idref_from_element(element, diagnostics).map(|r| Box::new(InjectValue::Idref(r)))
 }
 
-/// `<bean>` (anonymous inner bean) → `InjectValue::Inner`, guarded by
-/// [`crate::DEPTH_LIMIT`]. At the limit: `NestingLimitExceeded` plus an
-/// opaque `InjectValue::Null` downgrade (spec's own `NestingLimitExceeded`
-/// doc comment: "the remaining subtree is treated as opaque rather than
-/// risking a stack overflow") **instead of** calling `parse_bean` at all —
-/// the guard's whole point is to bound the recursion *before* it happens,
-/// not to let one more level through and stop after.
-///
-/// Returns `Box<InjectValue>` directly (not `InjectValue`) — private,
-/// single call site ([`parse_inject_value_child_boxed`]'s own `"bean"`
-/// arm), so there's no unboxed-signature test call site to preserve here
-/// unlike that function's own public wrapper; see
-/// `parse_inject_value_child_boxed`'s doc comment for why boxing at the
-/// point of construction (here) rather than one level up matters.
-fn parse_inner_bean_boxed(
-    scope: &NsScope,
-    diagnostics: &mut Vec<Diagnostic>,
-    depth: u32,
-    element: &XmlElement,
-) -> Box<InjectValue> {
-    if depth >= crate::DEPTH_LIMIT {
-        // `format!`'s own construction *and* the `Box::new(InjectValue::Null(..))`
-        // downgrade are both inside `push_inner_bean_nesting_limit` (which
-        // returns the boxed downgrade value directly) rather than built
-        // inline here — stack-diet (I3 P0 Windows `STATUS_STACK_OVERFLOW`
-        // fix; see `bean::parse_bean`'s own doc comment for the "-O0
-        // reserves every local for the whole function" rationale, and
-        // `parse_inject_value_child_boxed`'s own doc comment for the
-        // `Box::new(f())` non-fusion this specifically avoids). This branch
-        // is taken at most once per input (the level the limit is first hit
-        // at), but without a real function-call boundary its own
-        // temporaries would still be reserved in *every* one of
-        // `DEPTH_LIMIT` recursive frames.
-        return push_inner_bean_nesting_limit(diagnostics, element.span);
-    }
-    // `depth + 1`: this inner bean is one nesting level deeper than the
-    // caller that reached it — `parse_bean` threads this value, unchanged,
-    // into its own `<property>`/`<constructor-arg>` children's calls back
-    // into `parse_inject_value_child`, which is what keeps this mutual
-    // recursion actually bounded (see this module's own doc comment).
-    // `parse_bean` already returns a `Box<Bean>` (stack-diet: see that
-    // function's own doc comment) — used directly here, not re-boxed, since
-    // `InjectValue::Inner` is itself `Box<Bean>`.
-    let bean = crate::bean::parse_bean(scope, element, diagnostics, depth + 1);
-    box_inner_inject_value(bean)
-}
-
-/// `Box::new(InjectValue::Inner(bean))` — split out of
-/// [`parse_inner_bean_boxed`] purely for stack-diet framing, same
-/// `Box::new(f())` non-fusion rationale
-/// `parse_inject_value_child_boxed`'s doc comment documents.
+/// `Box::new(InjectValue::Inner(bean))` — used by [`begin_resolve_value`]'s
+/// own `"bean"` handling (indirectly, once the pushed [`crate::bean::BeanFrame`]
+/// finishes — see [`crate::depth_engine::wrap_as_value`]) and by this
+/// module's own `#[cfg(test)]` [`parse_inject_value_child`] wrapper — split
+/// out purely for stack-diet framing, same `Box::new(f())` non-fusion
+/// rationale `bean::new_bean_ctx`'s doc comment documents.
 #[inline(never)]
 pub(crate) fn box_inner_inject_value(bean: Box<Bean>) -> Box<InjectValue> {
     Box::new(InjectValue::Inner(bean))
 }
 
 /// `NestingLimitExceeded` diagnostic push, plus the boxed `Null` downgrade
-/// value itself, for [`parse_inner_bean_boxed`]'s own depth-limit branch —
-/// split out purely for stack-diet framing, see that function's own
-/// call-site comment.
+/// value itself, for [`begin_resolve_value`]'s own `"bean"` depth-limit
+/// branch — split out purely for stack-diet framing, see that function's
+/// own call-site comment.
 #[inline(never)]
 #[cold]
 fn push_inner_bean_nesting_limit(
@@ -814,25 +680,26 @@ fn push_inner_bean_nesting_limit(
 }
 
 // ---------------------------------------------------------------------
-// I3 P0 stack-diet fallback: the engine-aware sibling of
-// `parse_inject_value_child_boxed` — see `crate::depth_engine`'s own module
-// doc comment for the full picture. Every call site that used to call
-// `parse_inject_value_child_boxed` directly as part of the bean/collection
-// recursion (`bean::BeanFrame`, `collection::ListLikeFrame`,
-// `collection::MapFrame`'s own `EntryScan`) calls `begin_resolve_value`
-// instead; `parse_inject_value_child_boxed` itself is untouched and stays
-// the direct (test-only, in production terms) entry point — it's still
-// perfectly safe to call even for a deeply-nested element, since its own
-// `bean::parse_bean`/`collection::parse_collection_value` callees are
-// themselves now engine-driven (bounded real stack depth) rather than
-// self-recursive.
+// I3 P0 stack-diet fallback: [`begin_resolve_value`] is the single
+// engine-aware entry point every real recursive call site in this crate's
+// bean/collection recursion uses (`bean::BeanFrame::begin_property`/
+// `begin_constructor_arg`, `collection::ListLikeFrame`,
+// `collection::MapFrame`'s own `EntryScan`) — see `crate::depth_engine`'s
+// own module doc comment for the full picture. There is deliberately no
+// separate non-engine-aware sibling function anymore (an earlier one,
+// `parse_inject_value_child_boxed`, existed only to serve `property`'s/
+// `constructor_arg`'s own pre-engine recursive loops — once those were
+// removed, since `BeanFrame::step` intercepts `<property>`/
+// `<constructor-arg>` ahead of them, it had no callers left at all and was
+// removed too); this module's own `#[cfg(test)]` [`parse_inject_value_child`]
+// wrapper above calls this function directly, driving
+// [`crate::depth_engine::run`] itself when it defers.
 // ---------------------------------------------------------------------
 
 /// What attempting to resolve a value-shaped child element produced.
 pub(crate) enum ValueStep<'a> {
     /// Resolved without needing any further recursion — `None` for a
-    /// genuinely unrecognized shape, same as `parse_inject_value_child_boxed`'s
-    /// own `None`.
+    /// genuinely unrecognized shape.
     Resolved(Option<Box<InjectValue>>),
     /// Needs its own recursive resolution — push this onto
     /// `crate::depth_engine`'s stack instead of recursing. Boxed — see
@@ -840,17 +707,14 @@ pub(crate) enum ValueStep<'a> {
     Deferred(Box<crate::depth_engine::Frame<'a>>),
 }
 
-/// The engine-aware sibling of [`parse_inject_value_child_boxed`] — see this
-/// section's own comment. `depth` is the caller's own depth (unchanged
-/// meaning from `parse_inject_value_child_boxed`'s own `depth` parameter):
-/// an inner `<bean>` still gets `depth + 1` at the exact point this function
-/// commits to parsing it (see [`parse_inner_bean_boxed`]'s own doc comment
-/// for why the increment lives exactly there — preserved here unchanged),
-/// and a collection is still checked against [`crate::DEPTH_LIMIT`] at its
-/// *own* (unincremented) depth, with the `+1` hop applied only when
-/// descending into its own items/entries (`collection`'s own module doc
-/// comment) — both threading rules are unchanged from before this fix, just
-/// re-homed here.
+/// The single engine-aware entry point for resolving one already-identified
+/// value-shaped child element — see this section's own comment. `depth` is
+/// the caller's own running nesting depth: an inner `<bean>` gets `depth +
+/// 1` at the exact point this function commits to parsing it (pushing a
+/// [`crate::bean::BeanFrame`]), and a collection is checked against
+/// [`crate::DEPTH_LIMIT`] at its *own* (unincremented) depth, with the `+1`
+/// hop applied only when descending into its own items/entries
+/// (`collection`'s own module doc comment).
 pub(crate) fn begin_resolve_value<'a>(
     scope: &NsScope,
     diagnostics: &mut Vec<Diagnostic>,
@@ -890,8 +754,8 @@ pub(crate) fn begin_resolve_value<'a>(
 }
 
 /// The collection half of [`begin_resolve_value`] — also the engine-aware
-/// primitive `collection::parse_collection_value`'s own (test/public) entry
-/// point now delegates to directly, so the depth-limit check and
+/// primitive `collection::parse_collection_value`'s own `#[cfg(test)]`
+/// entry point delegates to directly, so the depth-limit check and
 /// classification logic live in exactly one place. `depth` is the
 /// collection's own (unincremented) depth — same convention
 /// `collection::parse_collection_value`'s own former (pre-fix) signature

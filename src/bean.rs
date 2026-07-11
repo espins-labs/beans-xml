@@ -33,14 +33,14 @@
 //!    arms above populate.
 //!
 //! `<property>`/`<constructor-arg>` are deliberately **not** among the five
-//! stubs above (same reservation-not-stub treatment `dispatch.rs`'s own
-//! doc comment describes for `<bean>` itself at the root level): wrapping
-//! `InjectValue` into a `Property`/`ConstructorArg` is U6/U7's contract,
-//! which build on **U5a**. `<property>`'s arm calls into U6's
-//! `crate::property::parse_property` directly, and `<constructor-arg>`'s arm
-//! calls into U7's `crate::constructor_arg::parse_constructor_arg` the same
-//! way (same treatment `dispatch.rs`'s `"bean"` arm gives U4's own
-//! `parse_bean`).
+//! stubs above, and are not arms of [`dispatch_bean_child`]'s match at all:
+//! wrapping `InjectValue` into a `Property`/`ConstructorArg` is U6/U7's
+//! contract, which build on **U5a**, but both element names are intercepted
+//! by [`BeanFrame::step`] *before* this match ever runs (see that method's
+//! own doc comment, and `crate::depth_engine`'s module doc comment for the
+//! full recursion-engine picture) — U6's `property::finish_property`/
+//! U7's `constructor_arg::finish_constructor_arg` are the real call sites,
+//! reached through [`BeanFrame::begin_property`]/[`BeanFrame::begin_constructor_arg`].
 //!
 //! `pub(crate)` — like `dispatch`, not part of the published API surface.
 
@@ -83,10 +83,9 @@ use crate::property::{finish_property, push_property_value_ref_conflict, resolve
 /// `depth` is this bean's own nesting depth (0 for every top-level
 /// `<beans>`-child bean, `dispatch::dispatch_root_child`'s own call site;
 /// N+1 for an inner `<bean>` reached through a property/constructor-arg
-/// value at depth N — see `inject_value::parse_inner_bean`, which increments
-/// before calling back in here). It is threaded, unchanged, into
-/// `dispatch_bean_child` so `<property>`/`<constructor-arg>` can pass it on
-/// to `inject_value::parse_inject_value_child`, the single
+/// value at depth N). It is threaded, unchanged, into [`BeanFrame`] so
+/// [`BeanFrame::begin_property`]/[`BeanFrame::begin_constructor_arg`] can
+/// pass it on to `inject_value::begin_resolve_value`, the single
 /// [`crate::DEPTH_LIMIT`] choke point that bounds the
 /// bean→property→inner-bean→property mutual recursion (see that function's
 /// own doc comment) — this parameter is what actually closes that loop;
@@ -173,14 +172,12 @@ pub(crate) fn parse_bean(
 // of those ever call back into `parse_bean`/`parse_collection_value`, so
 // they were never part of the unbounded recursion and don't need to move
 // onto the explicit stack; `dispatch_bean_child`'s own frozen match is
-// still the single dispatch point for them. Only the `"property"`/
-// `"constructor-arg"` arms, whose own value-shaped child can itself be
-// another `<bean>` or a collection, are intercepted *before*
-// `dispatch_bean_child` (their own arms there are consequently never
-// reached in practice — kept as-is regardless, since the match is frozen
-// structure and this isn't a leaf touching it) and rerouted through
-// `crate::inject_value::begin_resolve_value` — the single choke point
-// (mirroring `parse_inject_value_child_boxed`'s own former role) that
+// still the single dispatch point for them. Only `<property>`/
+// `<constructor-arg>`, whose own value-shaped child can itself be another
+// `<bean>` or a collection, are intercepted *before* `dispatch_bean_child`
+// (they are consequently not arms of that match at all — see
+// `dispatch_bean_child`'s own doc comment) and rerouted through
+// `crate::inject_value::begin_resolve_value` — the single choke point that
 // decides "resolve immediately" vs. "defer onto the explicit stack".
 // ---------------------------------------------------------------------
 
@@ -285,13 +282,7 @@ impl<'a> BeanFrame<'a> {
             }
             // Every other bean-child shape is bounded, non-recursive work
             // — reuse the frozen dispatch match unchanged.
-            dispatch_bean_child(
-                &mut self.ctx,
-                diagnostics,
-                &self.own_scope,
-                child_element,
-                self.depth,
-            );
+            dispatch_bean_child(&mut self.ctx, diagnostics, &self.own_scope, child_element);
         }
     }
 
@@ -802,25 +793,24 @@ pub(crate) fn split_name_tokens(text: &str, span: ByteSpan) -> Vec<Spanned<Strin
 /// through to it. A leaf unit (P2/P6/P8) fills exactly one handler
 /// function's body; none of them ever needs to touch this match.
 ///
-/// `depth` is `ctx`'s own bean's nesting depth (see `parse_bean`'s doc
-/// comment) — passed through unchanged to the `"property"` and
-/// `"constructor-arg"` arms, both of which forward it into
-/// `inject_value::parse_inject_value_child` for their own value-shaped
-/// child. Adding this parameter does not touch the match's arms/structure,
-/// so it stays within the dispatch contract leaves must not modify.
+/// `<property>`/`<constructor-arg>` are **not** arms of this match: both
+/// are intercepted by [`BeanFrame::step`] before this function is ever
+/// called for them (see that method's own doc comment), so this match only
+/// ever sees every *other* bean-child shape — none of which need `depth`,
+/// which is consequently not one of this function's own parameters either
+/// (unlike [`BeanFrame`], which still threads it through to
+/// [`BeanFrame::begin_property`]/[`BeanFrame::begin_constructor_arg`]).
 fn dispatch_bean_child(
     ctx: &mut BeanCtx,
     diagnostics: &mut Vec<Diagnostic>,
     scope: &NsScope,
     child: &XmlElement,
-    depth: u32,
 ) {
     let child_scope = NsScope::from_element(child, Some(scope));
     // Kept as one `qn: (String, String)` binding rather than destructured
     // `let (ns, local) = ..` — stack-diet micro-optimization, see
-    // `property::parse_property`'s own matching comment for the empirical
-    // (MIR-dump-confirmed) rationale: destructuring adds a second copy on
-    // top of the tuple's own temporary at `-O0`.
+    // `dispatch::dispatch_root_child`'s own matching comment for the
+    // empirical (MIR-dump-confirmed) rationale.
     let qn = resolve_qname(&child.name, &child_scope);
     match qn.1.as_str() {
         "description" if is_beans_ns(&qn.0) => {
@@ -835,22 +825,6 @@ fn dispatch_bean_child(
         }
         "replaced-method" if is_beans_ns(&qn.0) => {
             parse_replaced_method(ctx, diagnostics, scope, child)
-        }
-        "property" if is_beans_ns(&qn.0) => {
-            // Deliberately not one of U4's five stubs: wrapping
-            // `InjectValue` into a `Property` is U6's contract (SB-04,
-            // build plan U6 row), which builds on U5a. U6 wires the real
-            // call here (not a separate stub function) — same treatment
-            // `dispatch::dispatch_root_child`'s own `"bean"` arm gives U4's
-            // `parse_bean`.
-            crate::property::parse_property(ctx, diagnostics, scope, child, depth);
-        }
-        "constructor-arg" if is_beans_ns(&qn.0) => {
-            // Same treatment U6 gives `"property"` above: wrapping
-            // `InjectValue` into a `ConstructorArg` is U7's contract
-            // (SB-05, build plan U7 row), which builds on U5a. U7 wires
-            // the real call here (not a separate stub function).
-            crate::constructor_arg::parse_constructor_arg(ctx, diagnostics, scope, child, depth);
         }
         // An element inside the first-class `beans` namespace itself that
         // isn't one of the recognized/reserved names above — `UnknownElement`,
@@ -1077,7 +1051,7 @@ pub(crate) fn parse_lookup_method(
 /// `Spanned<String>`, not `Option`) — a missing attribute falls back to an
 /// empty string at `element`'s own span, the same infallible fallback
 /// [`collection::parse_prop_entry`](crate::collection)/
-/// [`property::parse_property`](crate::property) apply for their own
+/// [`property::resolve_property_name`](crate::property) apply for their own
 /// required-by-model `name=`/`key=` (rule 4: no panics, no invented
 /// `DiagCode` for a shape the spec's edge-case table doesn't call out).
 ///

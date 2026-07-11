@@ -13,23 +13,28 @@
 //!    `BeansFile` header fields — `profile`/`default-*` attributes plus the
 //!    `<description>` child element — read directly in [`parse_beans_body`].
 //! 2. **The root-child dispatch match** in [`dispatch_root_child`]: element
-//!    name + resolved namespace → one of six per-element handler-fn stubs
+//!    name + resolved namespace → one of five per-element handler-fn stubs
 //!    (`parse_alias`/`parse_import`/`parse_component_scan`/
-//!    `parse_property_source`/`parse_nested_beans`/`parse_namespaced`),
-//!    every one of them an intentional no-op — filling a stub's body is
-//!    leaf-unit work (P1/P3/P4/P5/P10/P7 respectively), and per the build
-//!    plan's stated contract, a leaf touches **only its own handler
-//!    function**, never this match. The 1st-class allowlist (all of the
-//!    `beans` namespace, `context:component-scan`/`context:property-
-//!    placeholder`, `util:properties`) and the `NamespacedElement`
-//!    catch-all — pinned as this match's **last** arm — are frozen here so
-//!    they can't be reshuffled or duplicated by a later leaf.
+//!    `parse_property_source`/`parse_namespaced`), every one of them an
+//!    intentional no-op — filling a stub's body is leaf-unit work
+//!    (P1/P3/P4/P5/P7 respectively), and per the build plan's stated
+//!    contract, a leaf touches **only its own handler function**, never
+//!    this match. The 1st-class allowlist (`context:component-scan`/
+//!    `context:property-placeholder`, `util:properties`) and the
+//!    `NamespacedElement` catch-all — pinned as this match's **last** arm —
+//!    are frozen here so they can't be reshuffled or duplicated by a later
+//!    leaf.
 //!
-//! `<bean>` itself is deliberately **not** one of the six stubs: bean
+//! `<bean>` itself is deliberately **not** one of the five stubs: bean
 //! parsing (and the bean-child dispatch skeleton around it) is entirely
 //! U4's contract (`parse_bean`, build plan U4 row) — this match only
 //! reserves `"bean"` a place so it doesn't fall through to `UnknownElement`
-//! or `NamespacedElement`, without calling anything not yet built.
+//! or `NamespacedElement`, without calling anything not yet built. `<beans>`
+//! itself (P10, SB-14, nested `<beans profile="...">`) is not an arm of
+//! this match either — it is intercepted by [`BeansBodyFrame::step`] before
+//! the match ever runs (see that method's own doc comment for the full P10
+//! rationale, and this module's own heap-worklist-engine section doc
+//! comment for why).
 //!
 //! `pub(crate)` — like `events`/`encoding`, not part of the published API
 //! surface; `lib.rs`'s `parse`/`parse_bytes`/`is_beans_doc` are the public
@@ -262,12 +267,12 @@ pub(crate) fn element_text(element: &XmlElement) -> Spanned<String> {
     merge_text_segments(&element_text_segments(element), element.span)
 }
 
-/// Parses one `<beans>` body — the top-level document root, or (once P10
-/// fills [`parse_nested_beans`]'s real body) a nested `<beans
-/// profile="...">` block — into a [`BeansFileCtx`]. This is the "recursion
-/// unification" re-entry point the build plan requires: any future recursive
-/// call (nested profiles) re-enters *this* function rather than
-/// reimplementing root-child dispatch a second time.
+/// Parses one `<beans>` body — the top-level document root, or (P10, SB-14)
+/// a nested `<beans profile="...">` block — into a [`BeansFileCtx`]. This is
+/// the "recursion unification" re-entry point the build plan requires: any
+/// recursive call (nested profiles, driven by [`BeansBodyFrame::step`]'s own
+/// `"beans"` handling — see that method's own doc comment) re-enters *this*
+/// function rather than reimplementing root-child dispatch a second time.
 ///
 /// Reads the SB-01 header fields directly (`profile`/`default-*`
 /// attributes, `<description>` child) — this unit's own scope — then
@@ -278,15 +283,17 @@ pub(crate) fn element_text(element: &XmlElement) -> Spanned<String> {
 ///
 /// `depth` is this call's own nesting level — `0` for the document root
 /// (`lib.rs`'s one top-level call), `n + 1` for a nested `<beans
-/// profile="...">` block re-entering from its enclosing block's own
-/// `depth` of `n` ([`parse_nested_beans`], P10). This is the choke point
-/// invariant #1 requires: `events::build_tree` deliberately builds the
-/// whole tree iteratively on the heap and carries no `DEPTH_LIMIT` of its
-/// own (see that module's doc comment — "`DEPTH_LIMIT` applies once a
-/// later unit recursively walks this tree"), and *this* function is that
-/// later unit for `<beans>`-in-`<beans>` nesting: `parse_beans_body` →
-/// `dispatch_root_child` → `parse_nested_beans` → `parse_beans_body` is a
-/// genuine native call-stack recursion cycle, so it needs the same
+/// profile="...">` block re-entering from its enclosing block's own `depth`
+/// of `n` ([`BeansBodyFrame::step`]'s own `"beans"` handling, P10). This is
+/// the choke point invariant #1 requires: `events::build_tree` deliberately
+/// builds the whole tree iteratively on the heap and carries no
+/// `DEPTH_LIMIT` of its own (see that module's doc comment —
+/// "`DEPTH_LIMIT` applies once a later unit recursively walks this tree"),
+/// and *this* function is that later unit for `<beans>`-in-`<beans>`
+/// nesting — historically a genuine native call-stack recursion cycle
+/// (`parse_beans_body` → `dispatch_root_child` → `parse_nested_beans` →
+/// `parse_beans_body`; see this section's own I3 P0 doc comment further
+/// down for why it no longer is one), so it needs the same
 /// before-any-recursion [`crate::DEPTH_LIMIT`] check every other recursive
 /// walker in this crate has (`collection::parse_collection_value`,
 /// `inject_value::parse_inner_bean`, `namespaced::build_namespaced_element`).
@@ -394,13 +401,15 @@ fn populate_beans_header_attrs(ctx: &mut BeansFileCtx, element: &XmlElement) {
 
 // ---------------------------------------------------------------------
 // I3 P0 stack-diet fallback: explicit-stack (heap worklist) iteration for
-// the `parse_beans_body` → `dispatch_root_child` → `parse_nested_beans` →
-// `parse_beans_body` recursion cycle (`<beans profile="...">`-in-`<beans>`
-// nesting) — see `crate::depth_engine`'s own module doc comment for the
-// general shape of this pattern: a frame owns everything its own call's
-// now-unwound stack frame used to hold, `step` drives per-level scanning,
-// and a finished frame's result flows back to whichever frame is now on
-// top (or is returned, once the stack empties).
+// what used to be a `parse_beans_body` → `dispatch_root_child` →
+// `parse_nested_beans` → `parse_beans_body` native recursion cycle
+// (`<beans profile="...">`-in-`<beans>` nesting; `parse_nested_beans` no
+// longer exists as a standalone function — see this section's own doc
+// comment further down) — see `crate::depth_engine`'s own module doc
+// comment for the general shape of this pattern: a frame owns everything
+// its own call's now-unwound stack frame used to hold, `step` drives
+// per-level scanning, and a finished frame's result flows back to whichever
+// frame is now on top (or is returned, once the stack empties).
 //
 // This is a separate, self-contained heap-worklist engine
 // ([`BeansBodyFrame`] + [`run_beans_body`]), not a fourth
@@ -419,14 +428,16 @@ fn populate_beans_header_attrs(ctx: &mut BeansFileCtx, element: &XmlElement) {
 // `collection::parse_collection_value`) would then have to match on and
 // immediately treat as unreachable, for no benefit.
 //
-// `dispatch_root_child`'s `"beans"` arm (and `parse_nested_beans` itself,
-// below) is **not** touched by this fix and stays exactly as it was — real
-// recursive call and all — but is never actually reached in practice any
-// more: [`BeansBodyFrame::step`] intercepts a `"beans"` child *before*
-// calling `dispatch_root_child`, the same "leaf arm kept as-is, frozen
-// structure, but no longer the live path" treatment `bean::BeanFrame::step`'s
-// own doc comment documents for its `"property"`/`"constructor-arg"`
-// interception ahead of `dispatch_bean_child`. Every other root-child shape
+// `dispatch_root_child` has no `"beans"` arm at all: [`BeansBodyFrame::step`]
+// intercepts a `"beans"` child *before* calling `dispatch_root_child`, the
+// same "intercept ahead of the frozen match" treatment
+// `bean::BeanFrame::step`'s own doc comment documents for its
+// `"property"`/`"constructor-arg"` interception ahead of
+// `dispatch_bean_child` — the P10 unit's own real work (re-entering this
+// same `BeansBodyFrame`/`parse_beans_body` shape, profile-expression
+// capture, sibling-profile override) lives directly in
+// [`BeansBodyFrame::step`]'s own `"beans"` handling now, not behind a
+// `parse_nested_beans`-style stub function. Every other root-child shape
 // (SB-01's own `<description>`, `<alias>`/`<import>`/`<bean>`/
 // `context:component-scan`/`context:property-placeholder`/
 // `util:properties`/`NamespacedElement`) is bounded, non-recursive work that
@@ -451,10 +462,10 @@ struct BeansBodyFrame<'a> {
     /// overlaid with `element`'s own `xmlns`/`xmlns:*` declarations, exactly
     /// the `scope` [`parse_beans_body`] itself used to receive and pass
     /// straight through to `dispatch_root_child` with no further overlay
-    /// (both call sites — `lib.rs`'s top-level call, [`parse_nested_beans`]
-    /// below — already overlay before calling in). Stored owned (`NsScope`
-    /// derives `Clone`) since it must outlive this whole frame's own
-    /// children loop, not just one `step` call.
+    /// (both call sites — `lib.rs`'s top-level call, [`Self::step`]'s own
+    /// `"beans"` handling below — already overlay before calling in).
+    /// Stored owned (`NsScope` derives `Clone`) since it must outlive this
+    /// whole frame's own children loop, not just one `step` call.
     scope: NsScope,
     children: &'a [XmlNode],
     idx: usize,
@@ -529,17 +540,55 @@ impl<'a> BeansBodyFrame<'a> {
                 continue;
             };
             // Resolve this child's own qname *before* falling through to
-            // `dispatch_root_child` — the same "intercept the recursive arm
-            // ahead of the frozen match, resolve again once inside it"
-            // duplication `bean::BeanFrame::step` accepts for
-            // `"property"`/`"constructor-arg"` (see that function's own
-            // doc comment): `dispatch_root_child`'s own `"beans"` arm below
-            // is intentionally left in place, frozen structure, but this
-            // check is what actually keeps it from ever firing in practice.
+            // `dispatch_root_child`, so a `"beans"` child never reaches
+            // that match at all (it has no arm for one — see
+            // `dispatch_root_child`'s own doc comment).
             let child_scope = NsScope::from_element(child_element, Some(&self.scope));
             let qn = resolve_qname(&child_element.name, &child_scope);
             if qn.1 == "beans" && is_beans_ns(&qn.0) {
-                // Same threading rule `parse_nested_beans` documented:
+                // Unit P10 (nested `<beans profile="...">`, SB-14) —
+                // `BeansFileCtx::nested_profiles`. Re-enters this same
+                // `BeansBodyFrame`/[`parse_beans_body`] shape (build plan
+                // "recursion unification") rather than reimplementing
+                // root-child dispatch — never calls `dispatch_root_child`
+                // or duplicates its match. That re-entry is also what
+                // makes this unit's two owned pieces come for free instead
+                // of needing bespoke code:
+                //
+                // - Profile-expression capture: [`BeansBodyFrame::new`]
+                //   already reads `profile=` into `ctx.profile` as a plain
+                //   `Spanned<String>` (SB-01, this unit's own
+                //   header-attribute handling, unchanged for the nested
+                //   case) — the raw text is never parsed as boolean logic,
+                //   so multi-value (`"dev,test"`), negation (`"!prod"`),
+                //   and full boolean-expression forms (`"(dev & !prod) |
+                //   qa"`, whatever Spring's `Profiles.of` grammar accepts)
+                //   all land verbatim in `nested_profiles[i].profile.value`
+                //   unchanged — evaluating/parsing that expression is a
+                //   consumer's job (spec's "SpEL/`${}` **evaluation**
+                //   (collection only)" non-goal, same policy applied to
+                //   profile expressions).
+                // - Sibling-profile override, not `DuplicateBeanId`: that
+                //   check lives in `dispatch_root_child`'s `"bean"` arm and
+                //   only ever compares a new `<bean>` against *its own*
+                //   `ctx.beans`. Each nested `<beans profile>` block gets a
+                //   fresh `BeansFileCtx` ([`BeansBodyFrame::new`] always
+                //   starts from `BeansFileCtx::default()`) — so two sibling
+                //   nested blocks (e.g. `<beans profile="dev">` and a
+                //   second, later `<beans profile="dev">` at the same
+                //   nesting level, or `<beans profile="dev">`/`<beans
+                //   profile="test">` each defining a bean with the same id)
+                //   never share a `ctx.beans` to compare against each
+                //   other. The same id appearing in two sibling profile
+                //   blocks is therefore never flagged `DuplicateBeanId` —
+                //   each block's `Bean` is independently preserved in its
+                //   own `nested_profiles[i].beans`, and a consumer picking
+                //   one active profile's block treats the later match as
+                //   the effective (override) definition. Nothing extra
+                //   needs implementing here for that to hold — it falls
+                //   out of "each recursive call gets an independent ctx" by
+                //   construction, not a special case this branch writes.
+                //
                 // `depth + 1` is this nested block's own depth, checked
                 // *before* recursing (never after) — same convention
                 // `inject_value::begin_resolve_value`'s own `Bean`/
@@ -555,21 +604,16 @@ impl<'a> BeansBodyFrame<'a> {
             }
             // Every other root-child shape is bounded, non-recursive work
             // — reuse the frozen dispatch match unchanged.
-            dispatch_root_child(
-                &mut self.ctx,
-                diagnostics,
-                &self.scope,
-                child_element,
-                self.depth,
-            );
+            dispatch_root_child(&mut self.ctx, diagnostics, &self.scope, child_element);
         }
     }
 
     /// Resumes this frame once a nested `<beans>` child it pushed has
     /// finished resolving — folds the result into `self.ctx.nested_profiles`
-    /// (same [`push_nested_beans_file`] helper [`parse_nested_beans`] itself
-    /// used to call) and hands control back to [`Self::step`] to continue
-    /// this block's own children loop.
+    /// via [`push_nested_beans_file`] (the same helper [`Self::step`]'s own
+    /// `"beans"` handling calls for the over-limit, synchronous case) and
+    /// hands control back to [`Self::step`] to continue this block's own
+    /// children loop.
     fn deliver(&mut self, nested_ctx: Box<BeansFileCtx>) -> BeansAdvance<'a> {
         push_nested_beans_file(&mut self.ctx, nested_ctx);
         BeansAdvance::Continue
@@ -623,21 +667,29 @@ fn run_beans_body(
 // ---------------------------------------------------------------------
 
 /// One `<beans>`-body child element → its handler. **Frozen structure**:
-/// the 1st-class allowlist (all of `beans`, `context:component-scan`/
-/// `context:property-placeholder`, `util:properties`) is enumerated
-/// explicitly; the [`NamespacedElement`](crate::model::NamespacedElement)
-/// catch-all (`parse_namespaced`) is the **last** arm, so anything not
-/// explicitly claimed above it — including every other `context:*`/
-/// `util:*` element (`context:annotation-config`, `util:list`, ...) and
-/// every other namespace entirely (`aop:*`, `tx:*`, `jee:*`, ...) — falls
-/// through to it. A leaf unit (P1/P3/P4/P5/P10/P7) fills exactly one
-/// handler function's body; none of them ever needs to touch this match.
+/// the 1st-class allowlist (`context:component-scan`/
+/// `context:property-placeholder`, `util:properties`, plus `<bean>` itself)
+/// is enumerated explicitly; the
+/// [`NamespacedElement`](crate::model::NamespacedElement) catch-all
+/// (`parse_namespaced`) is the **last** arm, so anything not explicitly
+/// claimed above it — including every other `context:*`/`util:*` element
+/// (`context:annotation-config`, `util:list`, ...) and every other namespace
+/// entirely (`aop:*`, `tx:*`, `jee:*`, ...) — falls through to it. A leaf
+/// unit (P1/P3/P4/P5/P10/P7) fills exactly one handler function's body;
+/// none of them ever needs to touch this match.
+///
+/// `<beans>` is **not** an arm of this match: it is intercepted by
+/// [`BeansBodyFrame::step`] before this function is ever called for it (see
+/// this section's own doc comment) — so this match only ever sees every
+/// *other* root-child shape, none of which need `depth`, which is
+/// consequently not one of this function's own parameters either (unlike
+/// [`BeansBodyFrame`], which still threads it through to
+/// [`BeansBodyFrame::new`]'s own recursive descent).
 fn dispatch_root_child(
     ctx: &mut BeansFileCtx,
     diagnostics: &mut Vec<Diagnostic>,
     scope: &NsScope,
     child: &XmlElement,
-    depth: u32,
 ) {
     // A child can declare its own `xmlns`/`xmlns:*` right on itself (legal
     // and common, e.g. a per-element prefix instead of declaring it on the
@@ -650,10 +702,17 @@ fn dispatch_root_child(
     // here for consistency.
     let child_scope = NsScope::from_element(child, Some(scope));
     // Kept as one `qn: (String, String)` binding rather than destructured
-    // `let (ns, local) = ..` — stack-diet micro-optimization, see
-    // `property::parse_property`'s own matching comment for the empirical
-    // (MIR-dump-confirmed) rationale: destructuring adds a second copy on
-    // top of the tuple's own temporary at `-O0`.
+    // `let (ns, local) = ..` — stack-diet micro-optimization: at `-O0`,
+    // destructuring a tuple rvalue into two separately-named locals
+    // generates an extra move/copy into those locals *on top of* the
+    // tuple's own temporary (confirmed empirically via MIR dump —
+    // `rustc -Z unpretty=mir` — showing both the tuple local and the two
+    // destructured locals coexisting), whereas field projection
+    // (`qn.0`/`qn.1`) reads directly out of the one temporary that's
+    // already there. Every other site in this crate with the same shape
+    // (`bean::dispatch_bean_child`, `collection::child_is_map_entry`/
+    // `child_is_map_key`, `inject_value::classify_inject_value_child`)
+    // points back to this comment rather than repeating it.
     let qn = resolve_qname(&child.name, &child_scope);
     match qn.1.as_str() {
         "description" if is_beans_ns(&qn.0) => {
@@ -676,19 +735,12 @@ fn dispatch_root_child(
         // ran — leaving this inline would bloat *every* call to
         // `dispatch_root_child`, for no benefit.
         "bean" if is_beans_ns(&qn.0) => dispatch_bean_element(ctx, diagnostics, scope, child),
-        // I3 P0 stack-diet fallback: this arm is frozen structure (kept
-        // as-is, real recursive call and all) but never actually reached in
-        // practice any more — `BeansBodyFrame::step` (this section's own
-        // heap-worklist engine, defined above `dispatch_root_child`)
-        // intercepts a `"beans"` child *before* calling this function at
-        // all, the same "leaf arm kept as-is, no longer the live path"
-        // treatment `bean::dispatch_bean_child`'s own `"property"`/
-        // `"constructor-arg"` arms get from `bean::BeanFrame::step`. Still
-        // exercised directly by any (test or future) call site that reaches
-        // `dispatch_root_child`/`parse_nested_beans` without going through
-        // `BeansBodyFrame`, which is why it stays fully correct rather than
-        // `unreachable!()`.
-        "beans" if is_beans_ns(&qn.0) => parse_nested_beans(ctx, diagnostics, scope, child, depth),
+        // `<beans>` is **not** an arm of this match: a nested `<beans>`
+        // child is intercepted by `BeansBodyFrame::step` (this section's
+        // own heap-worklist engine, defined above `dispatch_root_child`)
+        // before this function is ever called for it — see that method's
+        // own doc comment, and this section's own doc comment for the full
+        // recursion-engine picture.
         "component-scan" if is_context_ns(&qn.0) => {
             parse_component_scan(ctx, diagnostics, scope, child)
         }
@@ -846,8 +898,9 @@ pub(crate) fn parse_alias(
 /// `resource=` absent (malformed against the Spring XSD, which requires it)
 /// falls back to an empty spanned string at `element`'s own span — same
 /// "infallible fallback, no diagnostic invented for an untested edge shape"
-/// policy `property::parse_property` documents for its own missing `name=`
-/// — `classify_import_kind` then reads that empty string as `ImportKind::Other`.
+/// policy `property::resolve_property_name` documents for its own missing
+/// `name=` — `classify_import_kind` then reads that empty string as
+/// `ImportKind::Other`.
 /// `scope`/`diagnostics` are unused: `<import>` has no children to recurse
 /// into and no anomaly this unit's edge-case table calls for diagnosing.
 #[allow(unused_variables, clippy::ptr_arg)]
@@ -1148,85 +1201,20 @@ fn split_comma_list(text: &str, span: ByteSpan) -> Vec<Spanned<String>> {
     tokens
 }
 
-/// Unit **P10** (nested `<beans profile="...">`, SB-14) —
-/// `BeansFileCtx::nested_profiles`.
-///
-/// Re-enters [`parse_beans_body`] (build plan "recursion unification") rather than
-/// reimplementing root-child dispatch — never calls `dispatch_root_child`
-/// or duplicates its match. That re-entry is also what makes this unit's
-/// two owned pieces come for free instead of needing bespoke code:
-///
-/// - **Profile-expression capture**: `parse_beans_body` already reads
-///   `profile=` into `ctx.profile` as a plain `Spanned<String>` (SB-01,
-///   this unit's own header-attribute handling, unchanged for the nested
-///   case) — the raw text is never parsed as boolean logic, so multi-value
-///   (`"dev,test"`), negation (`"!prod"`), and full boolean-expression
-///   forms (`"(dev & !prod) | qa"`, whatever Spring's `Profiles.of` grammar
-///   accepts) all land verbatim in `nested_profiles[i].profile.value`
-///   unchanged — evaluating/parsing that expression is a consumer's job
-///   (spec's "SpEL/`${}` **evaluation** (collection only)" non-goal, same policy applied to
-///   profile expressions).
-/// - **Sibling-profile override, not `DuplicateBeanId`**: the
-///   `DuplicateBeanId` check lives in `dispatch_root_child`'s `"bean"` arm
-///   and only ever compares a new `<bean>` against *its own* `ctx.beans`.
-///   Each nested `<beans profile>` block gets a fresh `BeansFileCtx`
-///   (`parse_beans_body` always starts from `BeansFileCtx::default()`) —
-///   so two sibling nested blocks (e.g. `<beans profile="dev">` and a
-///   second, later `<beans profile="dev">` at the same nesting level, or
-///   `<beans profile="dev">`/`<beans profile="test">` each defining a bean
-///   with the same id) never share a `ctx.beans` to compare against each
-///   other. The same id appearing in two sibling profile blocks is
-///   therefore never flagged `DuplicateBeanId` — each block's `Bean` is
-///   independently preserved in its own `nested_profiles[i].beans`, and a
-///   consumer picking one active profile's block treats the later match as
-///   the effective (override) definition. Nothing extra needs implementing
-///   here for that to hold — it falls out of "each recursive call gets an
-///   independent ctx" by construction, not a special case this function
-///   writes.
-///
-/// `scope` is the PARENT scope — the one in effect for `element`'s parent,
-/// *before* overlaying whatever `xmlns`/`xmlns:*` declarations `element`
-/// itself carries, so a child scope is re-derived here with
-/// `NsScope::from_element(element, Some(scope))` before recursing — the
-/// same convention `bean::parse_bean` (and `parse_beans_body` itself)
-/// already follow, and the same one `lib.rs`'s own top-level call into
-/// `parse_beans_body` follows for the document root.
-///
-/// `depth` is `dispatch_root_child`'s own nesting level (this block's
-/// *parent* `<beans>`'s depth) — passed through as `depth + 1` into the
-/// re-entrant `parse_beans_body` call, exactly one increment per
-/// `<beans>`-in-`<beans>` hop. The [`crate::DEPTH_LIMIT`] check itself
-/// lives in `parse_beans_body` (see that function's own doc comment) —
-/// this stub only threads the counter, it never checks it directly.
-///
-/// I3 P0 stack-diet fallback: this function's own body is unchanged (real
-/// recursive call into `parse_beans_body` and all) but is no longer on the
-/// live `<beans>`-in-`<beans>` recursion path — `BeansBodyFrame::step`
-/// (defined above `dispatch_root_child`, this module's own heap-worklist
-/// engine) intercepts a `"beans"` child before `dispatch_root_child`'s own
-/// `"beans"` arm (the only caller of this function) is ever reached. Kept
-/// exactly as-is regardless, per the dispatch contract this whole match's
-/// own doc comment states — a leaf never touches `dispatch_root_child`'s
-/// match, and this fix isn't a leaf.
-pub(crate) fn parse_nested_beans(
-    ctx: &mut BeansFileCtx,
-    diagnostics: &mut Vec<Diagnostic>,
-    scope: &NsScope,
-    element: &XmlElement,
-    depth: u32,
-) {
-    let nested_scope = NsScope::from_element(element, Some(scope));
-    let nested_ctx = parse_beans_body(&nested_scope, element, diagnostics, depth + 1);
-    push_nested_beans_file(ctx, nested_ctx);
-}
-
-/// `ctx.nested_profiles.push(nested_ctx.into_beans_file())` — split out of
-/// [`parse_nested_beans`] purely for stack-diet framing: `into_beans_file()`
-/// returns a `BeansFile` by value (~376 bytes) that has to materialize
-/// somewhere before the `push`, and this is on the `<beans>`-in-`<beans>`
-/// recursive chain (`tests/i3_hostile_proptest.rs`'s `deep_profile`
-/// fixture) — same "give a large sequential construction its own
-/// transient frame" rationale `bean::finish_bean`'s doc comment gives.
+/// `ctx.nested_profiles.push(nested_ctx.into_beans_file())` — the P10 unit's
+/// (nested `<beans profile="...">`, SB-14) final assembly step, called from
+/// both of [`BeansBodyFrame`]'s own recursive-descent sites: synchronously
+/// in [`BeansBodyFrame::step`]'s own `"beans"` handling (see that method's
+/// own doc comment for the full P10 rationale — profile-expression capture,
+/// sibling-profile override) when the nesting limit is already exceeded,
+/// and from [`BeansBodyFrame::deliver`] once a nested block pushed onto the
+/// engine's own stack has finished resolving. Split out purely for
+/// stack-diet framing: `into_beans_file()` returns a `BeansFile` by value
+/// (~376 bytes) that has to materialize somewhere before the `push`, and
+/// this is on the `<beans>`-in-`<beans>` recursive chain
+/// (`tests/i3_hostile_proptest.rs`'s `deep_profile` fixture) — same "give a
+/// large sequential construction its own transient frame" rationale
+/// `bean::finish_bean`'s doc comment gives.
 #[inline(never)]
 fn push_nested_beans_file(ctx: &mut BeansFileCtx, nested_ctx: Box<BeansFileCtx>) {
     ctx.nested_profiles.push(nested_ctx.into_beans_file());

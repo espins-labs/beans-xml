@@ -4,7 +4,7 @@
 //! content (beans/imports/...) is fully populated by re-entering the shared
 //! `parse_beans_body`, not reimplemented here.
 //!
-//! `dispatch::parse_nested_beans`/`parse_beans_body` are `pub(crate)` — not
+//! `dispatch::BeansBodyFrame`/`parse_beans_body` are `pub(crate)` — not
 //! visible from this external integration-test binary — so every test here
 //! goes through the public API (`beans_xml::parse`) only, the same
 //! convention `tests/p1_alias.rs`/`tests/p3_import.rs` established.
@@ -241,10 +241,11 @@ fn sb14_nested_block_content_is_fully_populated() {
 #[test]
 fn sb14_nested_block_can_itself_contain_a_further_nested_profile() {
     // Recursion is bounded by `crate::DEPTH_LIMIT` (see the
-    // `sb14_depth_limit_*` tests below) since `parse_nested_beans`
-    // re-enters the same shared `parse_beans_body`, which checks depth
-    // before recursing further — a profile block nested inside another
-    // profile block is not a distinct code path.
+    // `sb14_depth_limit_*` tests below) since `BeansBodyFrame::step`'s own
+    // `"beans"` handling re-enters the same shared `parse_beans_body`
+    // shape, which checks depth before pushing a further frame — a
+    // profile block nested inside another profile block is not a distinct
+    // code path.
     let source = concat!(
         "<beans>",
         r#"<beans profile="dev">"#,
@@ -286,13 +287,13 @@ fn sb14_nested_block_span_covers_the_nested_beans_element() {
 
 // ---------------------------------------------------------------------
 // DEPTH_LIMIT — `<beans>`-in-`<beans>` recursion (SB-16 "infinite nesting →
-// must not panic" / invariant #1). `parse_nested_beans` re-enters
-// `parse_beans_body`, a genuine native call-stack recursion cycle
-// (`parse_beans_body` → `dispatch_root_child` → `parse_nested_beans` →
-// `parse_beans_body`) — same shape as `inject_value::parse_inner_bean`'s
-// and `collection::parse_collection_value`'s own DEPTH_LIMIT-guarded
-// recursion, so it must be bounded the same way. These tests only reach
-// `parse_beans_body`/`parse_nested_beans` through the public `parse` API
+// must not panic" / invariant #1). `BeansBodyFrame::step`'s own `"beans"`
+// handling re-enters `parse_beans_body`'s recursion-unification shape on the
+// heap-worklist engine (`dispatch::BeansBodyFrame` + `run_beans_body`) — same
+// shape as `inject_value::parse_inner_bean`'s and
+// `collection::parse_collection_value`'s own DEPTH_LIMIT-guarded recursion,
+// so it must be bounded the same way. These tests only reach
+// `parse_beans_body`/`BeansBodyFrame` through the public `parse` API
 // (they're `pub(crate)`, per this file's own header note), so the
 // boundary is exercised structurally — an actual chain of N nested
 // `<beans>` elements — rather than by injecting a `depth` value directly.

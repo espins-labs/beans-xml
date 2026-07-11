@@ -173,7 +173,7 @@ fn chain(open: &str, close: &str, count: usize, leaf: &str) -> String {
 /// Builds the four `deep_*` shapes (`list`/`inner_bean`/`profile`/`map`
 /// nesting, each `depth` levels deep) that stress the two `DEPTH_LIMIT`-
 /// guarded recursion axes this crate has (bean/property/constructor-arg
-/// mutual recursion, `dispatch::parse_nested_beans`'s own `<beans
+/// mutual recursion, `dispatch::BeansBodyFrame`'s own `<beans
 /// profile>` recursion, and list/set/array/map self-recursion) — shared by
 /// [`i3_hostile_fixtures_never_panic`] (`depth` = `DEPTH_LIMIT + 20`,
 /// hostile — over the limit, `NestingLimitExceeded` expected) and
@@ -291,7 +291,7 @@ fn i3_hostile_fixtures_never_panic() {
 // reach a 256 KiB thread budget at `DEPTH_LIMIT` levels for `deep_list`/
 // `deep_inner_bean`/`deep_map`, nor for a depth-(`DEPTH_LIMIT` - 1) *valid*
 // document — only `deep_profile` (a wholly separate recursion axis,
-// `dispatch::parse_nested_beans`, untouched by this fix) already fit.
+// `dispatch::BeansBodyFrame`, untouched by this fix) already fit.
 // Nothing here is redundant with `i3_p0_small_stack_thread_deeply_nested_input_does_not_overflow`
 // above: that test's own 60_000-deep `<foo>`/`<beans>` chains exercise
 // `events::build_tree`'s XmlElement tree construction/teardown depth (a

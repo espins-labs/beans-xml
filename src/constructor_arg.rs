@@ -1,14 +1,18 @@
 //! Unit **U7** — `<constructor-arg>` (SB-05): wraps [`InjectValue`] (U5a)
-//! with `index`/`type`/`name` + `<meta>` into a [`ConstructorArg`], and
-//! wires the real call into `bean::dispatch_bean_child`'s
-//! `"constructor-arg"` arm — the arm that module's own doc comment
-//! explicitly reserves for this unit ("U7's `\"constructor-arg\"` arm will
-//! need the same [`depth`] once it lands" / "same reservation, for U7"),
-//! same treatment as U6's `"property"` arm before it. Per the build plan's
-//! U7 row: "wrap InjectValue with name/index/type/meta", built on U5a,
-//! parallel with U6 (`Property`, SB-04).
+//! with `index`/`type`/`name` + `<meta>` into a [`ConstructorArg`].
+//! `<constructor-arg>` is intercepted by [`crate::bean::BeanFrame::step`]
+//! before `bean::dispatch_bean_child`'s match ever runs (see that method's
+//! own doc comment, and `crate::depth_engine`'s module doc comment for the
+//! full recursion-engine picture) — [`crate::bean::BeanFrame::begin_constructor_arg`]
+//! is the real call site, driving this module's [`finish_constructor_arg`]/
+//! [`push_constructor_arg_value_ref_conflict`]/[`resolve_constructor_arg_attrs`]
+//! directly rather than through a `parse_constructor_arg` entry point of its
+//! own — same treatment U6's `<property>` gets (`property.rs`'s own module
+//! doc comment). Per the build plan's U7 row: "wrap InjectValue with
+//! name/index/type/meta", built on U5a, parallel with U6 (`Property`,
+//! SB-04).
 //!
-//! Value resolution precedence mirrors `property::parse_property` exactly
+//! Value resolution precedence mirrors `property::resolve_value` exactly
 //! (see that function's own doc comment for the full rationale) — the two
 //! units are deliberately symmetric, since `<constructor-arg>` carries the
 //! identical `value=`/`ref=`/value-shaped-child triad `<property>` does,
@@ -36,138 +40,24 @@
 //!   empty-string fallback.
 //!
 //! `<meta key= value=>` children are `ConstructorArg`'s own field (distinct
-//! from `Bean::meta`, P6's stub) — read locally here rather than shared with
-//! `bean::parse_meta`, same reasoning `property::parse_meta_entry`'s doc
-//! comment gives (a different accumulator than the `Vec<MetaEntry>` a
-//! `ConstructorArg` carries). The two modules intentionally duplicate this
-//! small helper rather than share it, so each unit's leaf stays self
-//! contained per the build plan's "leaf fills only its own handler fn" rule.
+//! from `Bean::meta`, P6's stub) — scanned by
+//! [`crate::bean::scan_meta_and_candidate`] (shared with U6's own
+//! `<property>` scan) rather than by a copy of this loop living here, same
+//! reasoning `property.rs`'s own module doc comment gives (a different
+//! accumulator than the `Vec<MetaEntry>` a `ConstructorArg` carries).
 
-use crate::dispatch::{find_attr, is_beans_ns, resolve_qname, spanned_attr, NsScope};
-use crate::events::{XmlAttr, XmlElement, XmlNode};
-use crate::inject_value::{parse_inject_value_child_boxed, ref_from_attr, value_lit_from_attr};
+use crate::dispatch::{find_attr, spanned_attr};
+use crate::events::{XmlAttr, XmlElement};
+use crate::inject_value::{ref_from_attr, value_lit_from_attr};
 use crate::model::{
     BeanCtx, ClassRef, ConstructorArg, DiagCode, Diagnostic, InjectValue, MetaEntry, Spanned,
 };
 
-/// Parses one `<constructor-arg>` element — a `<bean>`-body child,
-/// dispatched from `bean::dispatch_bean_child`'s `"constructor-arg"` arm —
-/// into a [`ConstructorArg`], pushed onto `ctx.constructor_args`.
-///
-/// `scope`/`depth` follow the exact same conventions
-/// `property::parse_property` documents on its own signature: `scope` is
-/// the pre-overlay namespace scope in effect for `element`, and `depth` is
-/// the enclosing `<bean>`'s own nesting depth, forwarded unchanged into
-/// `inject_value::parse_inject_value_child` for this arg's own value-shaped
-/// child (if any) — the single [`crate::DEPTH_LIMIT`] choke point bounding
-/// bean→constructor-arg→inner-bean recursion. As with `parse_property`, this
-/// must **not** be hardcoded to `0`: doing so would reset the guard at every
-/// `<constructor-arg>` level and defeat it entirely for recursion reached
-/// through a constructor-arg's inner `<bean>`.
-///
-/// **Stack-diet note**: same treatment `property::parse_property` documents
-/// on its own signature (I3 P0 Windows `STATUS_STACK_OVERFLOW` fix) — the
-/// attribute reads before the loop and the `resolve_value`+`ConstructorArg`
-/// assembly after it are both factored into `#[inline(never)]` helpers, and
-/// `child_value` is `Option<Box<InjectValue>>` rather than
-/// `Option<InjectValue>`, for the identical reasons that function's doc
-/// comment gives.
-pub(crate) fn parse_constructor_arg(
-    ctx: &mut BeanCtx,
-    diagnostics: &mut Vec<Diagnostic>,
-    scope: &NsScope,
-    element: &XmlElement,
-    depth: u32,
-) {
-    let (index, type_ref, name) = resolve_constructor_arg_attrs(element);
-    let value_attr = find_attr(&element.attrs, "value");
-    let ref_attr = find_attr(&element.attrs, "ref");
-    if value_attr.is_some() && ref_attr.is_some() {
-        push_constructor_arg_value_ref_conflict(diagnostics, element.span);
-    }
-
-    // Own overlay — this element's own `xmlns`/`xmlns:*` (rare on
-    // `<constructor-arg>` itself, but the same convention every other
-    // recursive site in this crate follows) in effect for its children.
-    let own_scope = NsScope::from_element(element, Some(scope));
-
-    let mut meta = Vec::new();
-    let mut child_value: Option<Box<InjectValue>> = None;
-    let mut seen_value_child = false;
-
-    for child in &element.children {
-        let XmlNode::Element(child_element) = child else {
-            // Direct text (whitespace between child elements) has nothing
-            // to attach to at this level — same drop
-            // `property::parse_property`'s own child loop documents.
-            continue;
-        };
-        // Overlay `child_element`'s own `xmlns`/`xmlns:*` declarations
-        // before resolving its name — a xmlns declaration on `<meta>`
-        // itself applies to that element's own name, same as
-        // `dispatch_root_child`/`dispatch_bean_child` do for their own
-        // children (see those functions' doc comments, and
-        // `collection.rs`'s `parse_map`/`parse_map_entry`/`bean.rs`'s
-        // `parse_qualifier`, which document this identical fix for their
-        // own nested-element detection).
-        // `child_is_meta` — not an inline `NsScope`/qname-tuple check —
-        // purely for stack-diet framing, same rationale
-        // `property::parse_property`'s own `child_is_meta` call site
-        // documents: these locals are only needed for this one
-        // classification, never for the recursive descent
-        // (`parse_inject_value_child_boxed`) just below.
-        if child_is_meta(&own_scope, child_element) {
-            if let Some(entry) = parse_meta_entry(child_element) {
-                meta.push(entry);
-            }
-            continue;
-        }
-        // Only the first non-meta child is resolved as this arg's value —
-        // same "XSD only ever allows one, further children silently
-        // ignored" policy `property::parse_property`'s own loop documents.
-        if !seen_value_child {
-            seen_value_child = true;
-            // `_boxed`, not `parse_inject_value_child(..).map(Box::new)` —
-            // see `inject_value::parse_inject_value_child_boxed`'s own doc
-            // comment for why boxing one level too late still costs a full
-            // unboxed `InjectValue` in *this* frame.
-            child_value =
-                parse_inject_value_child_boxed(&own_scope, diagnostics, depth, child_element);
-        }
-    }
-
-    finish_constructor_arg(
-        ctx,
-        element.span,
-        index,
-        type_ref,
-        name,
-        value_attr,
-        ref_attr,
-        child_value,
-        meta,
-        diagnostics,
-    );
-}
-
-/// Whether `child_element` resolves (under `scope`) to a `<meta>` element
-/// in the beans namespace — split out of [`parse_constructor_arg`]'s loop
-/// purely for stack-diet framing, see that loop's own call-site comment;
-/// identical shape to `property::parse_property`'s own `child_is_meta`.
-#[inline(never)]
-fn child_is_meta(scope: &NsScope, child_element: &XmlElement) -> bool {
-    let child_scope = NsScope::from_element(child_element, Some(scope));
-    // Kept as one `qn: (String, String)` binding rather than destructured
-    // `let (ns, local) = ..` — stack-diet micro-optimization, see
-    // `property::parse_property`'s own matching comment for the empirical
-    // (MIR-dump-confirmed) rationale.
-    let qn = resolve_qname(&child_element.name, &child_scope);
-    qn.1 == "meta" && is_beans_ns(&qn.0)
-}
-
-/// `index=`/`type=`/`name=` resolution — split out of
-/// [`parse_constructor_arg`] purely for stack-diet framing (see that
-/// function's own doc comment).
+/// `index=`/`type=`/`name=` resolution for one `<constructor-arg>` element
+/// — called from [`crate::bean::BeanFrame::begin_constructor_arg`], the
+/// live entry point for `<constructor-arg>` (see this module's own doc
+/// comment for why there is no `parse_constructor_arg` function here to
+/// split this out of anymore) — split out purely for stack-diet framing.
 #[inline(never)]
 pub(crate) fn resolve_constructor_arg_attrs(
     element: &XmlElement,
@@ -182,8 +72,9 @@ pub(crate) fn resolve_constructor_arg_attrs(
     (index, type_ref, name)
 }
 
-/// `ConflictingValueAndRef` diagnostic push — split out of
-/// [`parse_constructor_arg`] purely for stack-diet framing, same rationale
+/// `ConflictingValueAndRef` diagnostic push, called from
+/// [`crate::bean::BeanFrame::begin_constructor_arg`] — split out purely for
+/// stack-diet framing, same rationale
 /// `property::push_property_value_ref_conflict` documents.
 #[inline(never)]
 pub(crate) fn push_constructor_arg_value_ref_conflict(
@@ -197,11 +88,14 @@ pub(crate) fn push_constructor_arg_value_ref_conflict(
     });
 }
 
-/// Final `resolve_value` + [`ConstructorArg`] assembly + push — split out of
-/// [`parse_constructor_arg`] purely for stack-diet framing, same rationale
-/// `property::finish_property` documents (only ever runs after this arg's
-/// own child loop, and any recursion reached through it, has fully
-/// returned).
+/// Final `resolve_value` + [`ConstructorArg`] assembly + push, called from
+/// [`crate::bean::BeanFrame::begin_constructor_arg`] (synchronously, when
+/// there is no value-shaped child to defer) and
+/// [`crate::bean::BeanFrame::deliver`] (once a deferred child value has come
+/// back off the engine's own stack) — split out purely for stack-diet
+/// framing, same rationale `property::finish_property` documents (only ever
+/// runs after any recursion reached through this arg's own value-shaped
+/// child has fully returned).
 #[allow(clippy::too_many_arguments)]
 #[inline(never)]
 pub(crate) fn finish_constructor_arg(
@@ -251,8 +145,8 @@ fn parse_type_ref_attr(attrs: &[XmlAttr]) -> Option<Spanned<ClassRef>> {
     })
 }
 
-/// Precedence documented on [`parse_constructor_arg`]'s own doc comment
-/// (identical to `property::resolve_value`): `value=` wins, then `ref=`,
+/// Precedence documented on this module's own doc comment (identical to
+/// `property::resolve_value`): `value=` wins, then `ref=`,
 /// then the first recognized value-shaped child, then (nothing at all
 /// resolved) an opaque `Null` at `span` — never a panic, never a missing
 /// `ConstructorArg.value`.
@@ -286,17 +180,4 @@ fn resolve_value(
         return value;
     }
     InjectValue::Null(span)
-}
-
-/// `<meta key="..." value="...">` → a [`MetaEntry`], or `None` when either
-/// attribute is missing — lenient skip, no diagnostic invented for a shape
-/// the spec's edge-case table doesn't call out (same policy
-/// `property::parse_meta_entry` documents).
-fn parse_meta_entry(element: &XmlElement) -> Option<MetaEntry> {
-    let key = find_attr(&element.attrs, "key")?;
-    let value = find_attr(&element.attrs, "value")?;
-    Some(MetaEntry {
-        key: spanned_attr(key),
-        value: spanned_attr(value),
-    })
 }

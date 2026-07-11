@@ -3,10 +3,10 @@
 //! snapshot + `value`/`ref` both specified → `ConflictingValueAndRef` +
 //! `<meta>`.
 //!
-//! `bean::parse_bean`/`property::parse_property` are `pub(crate)` — not
-//! visible from this external integration-test binary — so every test here
-//! goes through the public API (`beans_xml::parse`) only, the same
-//! convention `tests/u4_bean_core.rs` established.
+//! `bean::parse_bean`/`bean::BeanFrame`/`property::finish_property` are
+//! `pub(crate)` — not visible from this external integration-test binary —
+//! so every test here goes through the public API (`beans_xml::parse`) only,
+//! the same convention `tests/u4_bean_core.rs` established.
 
 use beans_xml::{DiagCode, InjectValue, Property, RefKind};
 

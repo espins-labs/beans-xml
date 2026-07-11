@@ -4,10 +4,11 @@
 //! positional args + `type`/`name` + `value`/`ref` both specified →
 //! `ConflictingValueAndRef` + `<meta>`.
 //!
-//! `bean::parse_bean`/`constructor_arg::parse_constructor_arg` are
-//! `pub(crate)` — not visible from this external integration-test binary —
-//! so every test here goes through the public API (`beans_xml::parse`) only,
-//! the same convention `tests/u6_property.rs` established.
+//! `bean::parse_bean`/`bean::BeanFrame`/`constructor_arg::finish_constructor_arg`
+//! are `pub(crate)` — not visible from this external integration-test
+//! binary — so every test here goes through the public API
+//! (`beans_xml::parse`) only, the same convention `tests/u6_property.rs`
+//! established.
 
 use beans_xml::{ConstructorArg, DiagCode, InjectValue, RefKind};
 

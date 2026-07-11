@@ -1,30 +1,34 @@
 //! Unit **U5b** — collections (SB-07): `<list>`/`<set>`/`<array>`/`<map>`/
 //! `<props>` → [`Collection`]. Per the build plan's own U5b row: "an item
 //! **reuses U5a InjectValue** (value/ref/inner)" — every item, map key/value,
-//! and nested collection resolves through `inject_value::parse_inject_value_child`
-//! unchanged; "collection → U5b (self-recursion)" — this module's own entry point
-//! ([`parse_collection_value`]) is exactly what that same function's
-//! `"list"`/`"set"`/`"array"`/`"map"`/`"props"` match arm now calls, so a
-//! `<list>` nested inside another `<list>` recurses back through the same
-//! shared match, never a second reimplementation.
+//! and nested collection resolves through `inject_value::begin_resolve_value`
+//! unchanged; "collection → U5b (self-recursion)" — a `<list>` nested inside
+//! another `<list>` is just another value-shaped child of a `ListLikeFrame`
+//! item, so it recurses back through that exact same
+//! `begin_resolve_value`/`begin_resolve_collection` classification, never a
+//! second reimplementation (see [`ListLikeFrame`]/[`MapFrame`]'s own doc
+//! comments, and `crate::depth_engine`'s module doc comment for the engine
+//! shape this all runs on).
 //!
-//! U5a→U5b is a *serial* continuation of the same match, not a parallel
-//! leaf pair (build plan: "U5b (collections) is serial after U5a") — this module wires
-//! directly into `inject_value::parse_inject_value_child`'s own match arm
-//! (previously reserved with a silent `None`), which is that module's own
-//! seam, not one of the frozen root-/bean-child dispatch matches the
-//! leaf-conflict-avoidance contract protects.
+//! U5a→U5b is a *serial* continuation of the same classification, not a
+//! parallel leaf pair (build plan: "U5b (collections) is serial after
+//! U5a") — this module wires directly into
+//! `inject_value::begin_resolve_value`'s own `Collection` arm (previously
+//! reserved with a silent `None`), which is that module's own seam, not one
+//! of the frozen root-/bean-child dispatch matches the leaf-conflict-avoidance
+//! contract protects.
 //!
-//! Depth bookkeeping mirrors `inject_value::parse_inner_bean` exactly: the
-//! incoming `depth` is checked against [`crate::DEPTH_LIMIT`] *before* any
-//! recursion happens (downgrading to an opaque `InjectValue::Null` plus
-//! `NestingLimitExceeded` instead), and every further descent — a list/set/
-//! array item, a map entry's key/value, a nested collection — passes
-//! `depth + 1`, exactly one increment per hop from a container to its own
-//! content. `<entry>`/`<key>` wrapper elements are not themselves a hop
-//! (same non-incrementing treatment `property::parse_property` gives its
-//! own `<property>` wrapper before calling into `parse_inject_value_child`)
-//! — only actual value/bean/collection descent counts.
+//! Depth bookkeeping mirrors `inject_value::begin_resolve_value`'s own
+//! `"bean"` handling exactly: the incoming `depth` is checked against
+//! [`crate::DEPTH_LIMIT`] *before* any recursion happens (downgrading to an
+//! opaque `InjectValue::Null` plus `NestingLimitExceeded` instead), and
+//! every further descent — a list/set/array item, a map entry's key/value,
+//! a nested collection — passes `depth + 1`, exactly one increment per hop
+//! from a container to its own content. `<entry>`/`<key>` wrapper elements
+//! are not themselves a hop (same non-incrementing treatment
+//! `bean::BeanFrame::begin_property` gives its own `<property>` wrapper
+//! before calling into `begin_resolve_value`) — only actual
+//! value/bean/collection descent counts.
 //!
 //! `<props>` is the one exception: `<prop key="...">text</prop>` entries
 //! are always plain literals (no ref/inner/nested-collection shape the XSD
@@ -42,25 +46,21 @@ use crate::model::{
 };
 
 /// Resolves one already-identified collection element (`<list>`/`<set>`/
-/// `<array>`/`<map>`/`<props>`) into an `InjectValue::Collection` — the
-/// single entry point `inject_value::parse_inject_value_child`'s own match
-/// arm calls for all five element names. `scope` is the caller's
-/// pre-overlay scope (same convention every recursive entry point in this
-/// crate follows — see this module's own doc comment); this function
-/// re-derives its own overlay via `NsScope::from_element` wherever it needs
-/// one, rather than the caller doing it.
+/// `<array>`/`<map>`/`<props>`) into an `InjectValue::Collection`. `scope`
+/// is the caller's pre-overlay scope (same convention every recursive entry
+/// point in this crate follows — see this module's own doc comment); this
+/// function re-derives its own overlay via `NsScope::from_element` wherever
+/// it needs one, rather than the caller doing it.
 ///
 /// **Stack-diet note** (I3 P0 Windows `STATUS_STACK_OVERFLOW` fix): the
 /// `NestingLimitExceeded` early-return's `format!` call and each `match`
 /// arm's own `Collection`-variant construction are both factored into
 /// `#[inline(never)]` helpers below — see `bean::parse_bean`'s doc comment
-/// for the "-O0 reserves every local for the whole function" framing and
-/// `inject_value::parse_inject_value_child`'s doc comment for why a
-/// `match`'s arms specifically each need their own real function-call
-/// boundary (confirmed empirically via `otool -tv` disassembly of a debug
-/// build for this exact function too — this is the choke point for the
-/// list/map self-recursion `tests/i3_hostile_proptest.rs`'s `deep_list`/
-/// `deep_map` fixtures stress).
+/// for the "-O0 reserves every local for the whole function" framing
+/// (confirmed empirically via `otool -tv` disassembly of a debug build for
+/// this exact function too — this is the choke point for the list/map
+/// self-recursion `tests/i3_hostile_proptest.rs`'s `deep_list`/`deep_map`
+/// fixtures stress).
 ///
 /// **I3 P0 stack-diet fallback**: the recursive list/map self-descent this
 /// doc comment's own stack-diet note used to describe (`resolve_list_collection`/
@@ -74,7 +74,25 @@ use crate::model::{
 /// item/entry resolution funnels through) plus, for the two collection
 /// shapes that do need further recursion (`list`/`set`/`array`/`map`, not
 /// `props`), [`crate::depth_engine::run`] to drive that recursion on the
-/// heap instead of the real call stack.
+/// heap instead of the real call stack — the same "push one frame, run the
+/// engine, unwrap the result" shape [`crate::bean::parse_bean`] uses for its
+/// own top-level entry point.
+///
+/// `#[cfg(test)]`: every real production call site resolves a collection
+/// value-shaped child through [`crate::inject_value::begin_resolve_value`]/
+/// `begin_resolve_collection` directly (`bean::BeanFrame::begin_property`/
+/// `begin_constructor_arg`, `ListLikeFrame`/`MapFrame`'s own item/entry
+/// resolution) and drives the resulting deferred frame on its *own*
+/// existing engine run rather than starting a fresh nested one here — a
+/// `<list>`/`<map>`/etc. is only ever reached as another element's
+/// value-shaped child, never a standalone top-level parse target, so this
+/// function has no production call site of its own. It stays as this
+/// module's own directly-callable entry point purely for this crate's
+/// existing test suite (this file's own `#[cfg(test)] mod tests`, dozens of
+/// call sites below), the same "test-only, in production terms" treatment
+/// `inject_value::parse_inject_value_child`'s own doc comment documents for
+/// its sibling case.
+#[cfg(test)]
 pub(crate) fn parse_collection_value(
     scope: &NsScope,
     diagnostics: &mut Vec<Diagnostic>,
@@ -124,7 +142,7 @@ pub(crate) enum CollectionKind {
 /// (72 bytes) and the qname tuple this needs are used *only* to pick a
 /// `CollectionKind` — every arm above is called with the *original*
 /// `scope` parameter, not `own_scope` (each arm's own callee re-derives its
-/// own overlay fresh, same convention `inject_value::parse_inner_bean_boxed`
+/// own overlay fresh, same convention `inject_value::begin_resolve_value`
 /// documents), so unlike an `own_scope` that has to stay alive across a
 /// recursive call (boxed instead elsewhere in this crate's hot chain), this
 /// pair can be dropped entirely once classification is done — confining
@@ -452,8 +470,8 @@ fn child_is_map_entry(scope: &NsScope, child_element: &XmlElement) -> bool {
     let child_scope = NsScope::from_element(child_element, Some(scope));
     // Kept as one `qn: (String, String)` binding rather than destructured
     // `let (ns, local) = ..` — stack-diet micro-optimization, see
-    // `property::parse_property`'s own matching comment for the empirical
-    // (MIR-dump-confirmed) rationale.
+    // `dispatch::dispatch_root_child`'s own matching comment for the
+    // empirical (MIR-dump-confirmed) rationale.
     let qn = resolve_qname(&child_element.name, &child_scope);
     qn.1 == "entry" && is_beans_ns(&qn.0)
 }
@@ -661,8 +679,8 @@ fn child_is_map_key(scope: &NsScope, child_element: &XmlElement) -> bool {
     let child_scope = NsScope::from_element(child_element, Some(scope));
     // Kept as one `qn: (String, String)` binding rather than destructured
     // `let (ns, local) = ..` — stack-diet micro-optimization, see
-    // `property::parse_property`'s own matching comment for the empirical
-    // (MIR-dump-confirmed) rationale.
+    // `dispatch::dispatch_root_child`'s own matching comment for the
+    // empirical (MIR-dump-confirmed) rationale.
     let qn = resolve_qname(&child_element.name, &child_scope);
     qn.1 == "key" && is_beans_ns(&qn.0)
 }
@@ -703,8 +721,8 @@ fn push_map_entry_value_conflict(diagnostics: &mut Vec<Diagnostic>, span: crate:
 /// (~120 bytes apiece — `Value`/`Ref`/the resolved child), and with *two*
 /// such chains (key and value) inline in one function, all of those
 /// temporaries summed into one frame at `-O0`, same "match arm" reservation
-/// issue `inject_value::parse_inject_value_child_boxed`'s doc comment
-/// documents for a different function shape.
+/// issue `inject_value::begin_resolve_value`'s doc comment documents for a
+/// different function shape.
 #[allow(clippy::too_many_arguments)]
 #[inline(never)]
 fn finish_map_entry(
