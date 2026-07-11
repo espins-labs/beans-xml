@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/espins-labs/beans-xml/compare/v0.1.1...v0.1.2) - 2026-07-11
+
+### Other
+
+- document the debug-build serde serialization stack limitation (0.1.2)
+- *(wasm)* bump the npm crate to 0.1.1 (ships the bounded-stack parse engine)
+- *(readme)* add crates.io/docs.rs/npm/CI/license badges + Installation section (batis-xml sibling parity)
+
 ## [0.1.1](https://github.com/espins-labs/beans-xml/compare/v0.1.0...v0.1.1) - 2026-07-11
 
 ### Fixed
