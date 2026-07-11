@@ -8,6 +8,13 @@
 //!
 //! Contract (batis-xml sibling): `parse`/`parse_bytes` never return `Err` — every
 //! anomaly becomes a [`Diagnostic`]. Spans are **decoded-UTF-8** offsets.
+//!
+//! `parse` is also stack-bounded on any input (heap-worklist engines,
+//! pinned by small-stack CI tests). Known limitation, fix planned for
+//! 0.1.2: **serde-serializing** a maximally nested (~250-level) result
+//! recurses once per model level and can need ~2 MiB of stack in debug
+//! builds (release: under 64 KiB, so wasm/npm is unaffected) — see the
+//! README's "Known limitation" section.
 
 #![forbid(unsafe_code)]
 

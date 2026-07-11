@@ -82,6 +82,19 @@ bean-reference harvesting, and namespaced allowlisted-ref elements (`aop:`/`tx:`
 - Two runnable examples: `bean_list` (flat bean listing) and `dep_graph_dot`
   (bean-to-bean dependency graph as Graphviz DOT).
 
+## Known limitation (fix planned for 0.1.2)
+
+`parse()` itself is stack-bounded on any input — the depth-guarded recursion
+runs on heap worklists, pinned by small-stack regression tests in CI. But
+**serde-serializing** a maximally nested result recurses once per model level:
+a hostile ~250-level-deep model (the `DEPTH_LIMIT` cap is 256) can need
+~2 MiB of stack in **debug** builds — more than a Windows main thread's 1 MiB
+default. Release builds need under 64 KiB, so the npm/wasm package is
+unaffected, and realistic Spring XML (tens of levels) is nowhere near the
+threshold. Until an iterative serializer lands, debug-build consumers
+serializing untrusted deeply-nested documents should do so on a thread with
+at least 2 MiB of stack.
+
 ## License
 
 Dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE).
