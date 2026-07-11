@@ -21,6 +21,20 @@
 //! - `collection::parse_collection_value`'s "a list/set/array item, or a
 //!   map entry's key/value, is itself a nested `<bean>` or collection" edge.
 //!
+//! The one other unbounded recursive axis in this crate —
+//! `dispatch::parse_beans_body`'s `<beans profile="...">`-in-`<beans>`
+//! nesting (`parse_beans_body` → `dispatch_root_child` →
+//! `parse_nested_beans` → `parse_beans_body`) — follows this exact same
+//! frame-owns-resumable-state / `step`-drives-scanning / results-flow-back
+//! shape, but through its own sibling engine (`dispatch::BeansBodyFrame` +
+//! `dispatch::run_beans_body`), not through this module's `Frame`/`run`.
+//! The two never need to interoperate (a `<beans>` element is never
+//! reachable through a `<bean>`'s own children or a collection's own
+//! items/entries, and vice versa), so keeping them separate avoids adding
+//! "can never actually happen" cases to either one's `Frame`/`Completed`
+//! enum — see `dispatch.rs`'s own matching doc comment (right above
+//! `BeansBodyFrame`) for the full rationale.
+//!
 //! Every other per-level concern (bean attribute parsing,
 //! `<qualifier>`/`<meta>`/`<lookup-method>`/`<replaced-method>`/decorator
 //! handling, `<props>` entries) is bounded, non-recursive work that was

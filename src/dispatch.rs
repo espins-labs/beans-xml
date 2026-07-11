@@ -302,18 +302,30 @@ pub(crate) fn element_text(element: &XmlElement) -> Spanned<String> {
 /// `parse_beans_body` recursion cycle, `DEPTH_LIMIT` (256) levels of nested
 /// `<beans profile="...">` blocks blew a 256 KiB thread stack well before
 /// the guard fired (`tests/i3_hostile_proptest.rs`'s `deep_profile`
-/// fixture). Same two-part fix as `bean::parse_bean`'s own matching doc
-/// comment: `ctx` is heap-allocated (`Box<BeansFileCtx>`) instead of living
-/// in this frame, and this function returns `Box<BeansFileCtx>` (its two
-/// call sites — `parse_nested_beans` below, `lib.rs`'s top-level call — each
-/// just call `.into_beans_file()` on it same as before; `Box` derefs
-/// transparently). The `NestingLimitExceeded` early-return and the header
-/// attribute reads are both factored into `#[inline(never)]` helpers below
-/// for the same reason `bean::parse_bean`'s doc comment gives: a helper's
-/// own locals/`format!` temporaries live in *that helper's own* stack
-/// frame, fully popped before this function's own recursive descent begins
-/// — left inline, an unoptimized (`-O0`) frame reserves stack for them on
-/// every one of `DEPTH_LIMIT` nested levels simultaneously, not just once.
+/// fixture). Frame-dieting alone (heap-allocating `ctx` as a
+/// `Box<BeansFileCtx>`, returning `Box<BeansFileCtx>` rather than
+/// `BeansFileCtx` by value, splitting the `NestingLimitExceeded` early-return
+/// and the header-attribute reads into `#[inline(never)]` helpers — the same
+/// two-part-plus-helpers fix `bean::parse_bean`'s own matching doc comment
+/// describes) reduced this cycle's per-level stack cost but, alone, still
+/// could not reach a 256 KiB thread budget at `DEPTH_LIMIT` levels on every
+/// platform (this crate's own commit history: it "squeaks past" a 256 KiB
+/// thread on macOS — fails at 224 KiB — and a Windows MSVC debug build's
+/// fatter frames overflow it outright).
+///
+/// **I3 P0 stack-diet fallback**: this function is now a thin wrapper —
+/// same shape as `bean::parse_bean`'s own — around [`BeansBodyFrame`] +
+/// [`run_beans_body`], the heap-worklist engine that drives the whole
+/// `<beans>`-in-`<beans>` recursion (this block, every nested `<beans
+/// profile="...">` reachable through it, however deep) on the heap instead
+/// of the real call stack. See that section's own doc comment (just below)
+/// for why this is a separate engine from `crate::depth_engine::run` rather
+/// than a fourth `Frame` variant there, and [`BeansBodyFrame`]'s own doc
+/// comment for how the recursion itself now works. The `NestingLimitExceeded`
+/// early-return here (this function's own entry, `depth >= DEPTH_LIMIT`) and
+/// the header-attribute/`ctx`-construction helpers below are otherwise
+/// unchanged — still `#[inline(never)]`, still exactly what
+/// [`BeansBodyFrame::new`] itself calls for its own prologue.
 pub(crate) fn parse_beans_body(
     scope: &NsScope,
     element: &XmlElement,
@@ -323,21 +335,8 @@ pub(crate) fn parse_beans_body(
     if depth >= crate::DEPTH_LIMIT {
         return nesting_limit_exceeded_beans_ctx(element, diagnostics);
     }
-
-    let mut ctx = new_beans_file_ctx(element.span);
-
-    populate_beans_header_attrs(&mut ctx, element);
-
-    for child in &element.children {
-        if let XmlNode::Element(child_element) = child {
-            dispatch_root_child(&mut ctx, diagnostics, scope, child_element, depth);
-        }
-        // Top-level text (whitespace between elements, typically) has
-        // nothing to attach to at this level and is dropped, same as
-        // `events::build_tree`'s own out-of-element text handling.
-    }
-
-    ctx
+    let frame = BeansBodyFrame::new(scope, element, depth);
+    run_beans_body(vec![frame], diagnostics)
 }
 
 /// `Box::new(BeansFileCtx::default())` plus the one field ([`ByteSpan`])
@@ -391,6 +390,232 @@ fn populate_beans_header_attrs(ctx: &mut BeansFileCtx, element: &XmlElement) {
     ctx.default_merge = find_bool_attr(&element.attrs, "default-merge");
     ctx.default_autowire_candidates =
         find_attr(&element.attrs, "default-autowire-candidates").map(spanned_attr);
+}
+
+// ---------------------------------------------------------------------
+// I3 P0 stack-diet fallback: explicit-stack (heap worklist) iteration for
+// the `parse_beans_body` → `dispatch_root_child` → `parse_nested_beans` →
+// `parse_beans_body` recursion cycle (`<beans profile="...">`-in-`<beans>`
+// nesting) — see `crate::depth_engine`'s own module doc comment for the
+// general shape of this pattern: a frame owns everything its own call's
+// now-unwound stack frame used to hold, `step` drives per-level scanning,
+// and a finished frame's result flows back to whichever frame is now on
+// top (or is returned, once the stack empties).
+//
+// This is a separate, self-contained heap-worklist engine
+// ([`BeansBodyFrame`] + [`run_beans_body`]), not a fourth
+// `crate::depth_engine::Frame` variant: `<beans>`-in-`<beans>` nesting and
+// bean/property/constructor-arg/collection nesting are two disjoint
+// recursive axes — a nested `<beans profile="...">` is only ever reached
+// through another `<beans>` body's own children (SB-14), never through a
+// `<bean>`'s own children or a collection's own items/entries, so this
+// cycle's frames never need to push onto, or receive a delivery from, a
+// `bean::BeanFrame`/`collection::ListLikeFrame`/`collection::MapFrame`, and
+// vice versa. Folding them into one `Vec<Frame>`/`Completed` pair would only
+// add "can never actually happen" match arms (a `BeansBodyFrame` asked to
+// deliver a `Box<InjectValue>`, or a `BeanFrame`/`ListLikeFrame`/`MapFrame`
+// asked to deliver a `Box<BeansFileCtx>`) that every one of
+// `crate::depth_engine::run`'s existing call sites (`bean::parse_bean`,
+// `collection::parse_collection_value`) would then have to match on and
+// immediately treat as unreachable, for no benefit.
+//
+// `dispatch_root_child`'s `"beans"` arm (and `parse_nested_beans` itself,
+// below) is **not** touched by this fix and stays exactly as it was — real
+// recursive call and all — but is never actually reached in practice any
+// more: [`BeansBodyFrame::step`] intercepts a `"beans"` child *before*
+// calling `dispatch_root_child`, the same "leaf arm kept as-is, frozen
+// structure, but no longer the live path" treatment `bean::BeanFrame::step`'s
+// own doc comment documents for its `"property"`/`"constructor-arg"`
+// interception ahead of `dispatch_bean_child`. Every other root-child shape
+// (SB-01's own `<description>`, `<alias>`/`<import>`/`<bean>`/
+// `context:component-scan`/`context:property-placeholder`/
+// `util:properties`/`NamespacedElement`) is bounded, non-recursive work that
+// was never part of the unbounded recursion — it stays exactly as it was,
+// still reached through `dispatch_root_child`'s own frozen match, called
+// directly (not through this engine) from [`BeansBodyFrame::step`].
+// ---------------------------------------------------------------------
+
+/// One in-progress `parse_beans_body` call, suspended on the heap instead of
+/// the real call stack — see this section's own doc comment. Mirrors
+/// [`crate::bean::BeanFrame`]'s shape (a `children`/`idx` cursor over one
+/// element's own children, driven by `step`) but needs no "waiting" slot:
+/// unlike a `<property>`/`<constructor-arg>`'s deferred value (which needs
+/// its own name/attributes/meta stashed until the value comes back — see
+/// `bean::PendingBeanValue`), a nested `<beans>`'s finished result needs
+/// nothing beyond `self.ctx` itself to fold into once it comes back
+/// ([`Self::deliver`]) — so there is nothing to remember about *which*
+/// nested `<beans>` is currently pushed.
+struct BeansBodyFrame<'a> {
+    ctx: Box<BeansFileCtx>,
+    /// The scope in effect for `element`'s own children — i.e. already
+    /// overlaid with `element`'s own `xmlns`/`xmlns:*` declarations, exactly
+    /// the `scope` [`parse_beans_body`] itself used to receive and pass
+    /// straight through to `dispatch_root_child` with no further overlay
+    /// (both call sites — `lib.rs`'s top-level call, [`parse_nested_beans`]
+    /// below — already overlay before calling in). Stored owned (`NsScope`
+    /// derives `Clone`) since it must outlive this whole frame's own
+    /// children loop, not just one `step` call.
+    scope: NsScope,
+    children: &'a [XmlNode],
+    idx: usize,
+    depth: u32,
+}
+
+/// [`BeansBodyFrame::step`]'s own step result — same "advance in place /
+/// descend / return" framing as [`crate::depth_engine::Advance`], specialized
+/// to `Box<BeansFileCtx>` (this cycle never produces or consumes an
+/// `InjectValue`) — see this section's own doc comment for why that's a
+/// separate type rather than reusing `crate::depth_engine::Advance` itself.
+enum BeansAdvance<'a> {
+    /// Descend: push `frame` and re-enter [`run_beans_body`]'s own loop with
+    /// it on top — the frame underneath (which requested this) is left
+    /// exactly as it was; it only resumes once the pushed frame eventually
+    /// finishes (see [`BeansBodyFrame::deliver`]).
+    Push(Box<BeansBodyFrame<'a>>),
+    /// Made progress without changing the stack's shape (processed a
+    /// non-recursive root child, or immediately folded an over-limit nested
+    /// `<beans>`'s downgraded stub into `self.ctx` without ever pushing a
+    /// frame for it) — call `step`/`deliver` again on the same (still-top)
+    /// frame.
+    Continue,
+    /// Return: this frame has nothing left to do. [`run_beans_body`] pops
+    /// it, converts it via [`BeansBodyFrame::finish`], and delivers the
+    /// result to whatever is now on top (or returns it, if the stack is now
+    /// empty).
+    Finished,
+}
+
+impl<'a> BeansBodyFrame<'a> {
+    /// Starts a new frame for `element` — the exact prologue
+    /// `parse_beans_body` ran inline before its own children loop (SB-01
+    /// header attributes), unchanged. `depth` must already be known to be
+    /// `< crate::DEPTH_LIMIT` — both call sites ([`parse_beans_body`]'s own
+    /// wrapper, and [`Self::step`]'s own `"beans"` interception below) check
+    /// that themselves *before* constructing a frame, exactly mirroring
+    /// `inject_value::begin_resolve_value`'s "check before push, never push
+    /// past the limit" convention — so this constructor itself never needs
+    /// to check or downgrade.
+    fn new(scope: &NsScope, element: &'a XmlElement, depth: u32) -> Self {
+        debug_assert!(depth < crate::DEPTH_LIMIT);
+        let mut ctx = new_beans_file_ctx(element.span);
+        populate_beans_header_attrs(&mut ctx, element);
+        BeansBodyFrame {
+            ctx,
+            scope: scope.clone(),
+            children: &element.children,
+            idx: 0,
+            depth,
+        }
+    }
+
+    /// Advances this frame by one step: either makes local progress
+    /// (`BeansAdvance::Continue`, implicitly, by looping again below),
+    /// finishes (`BeansAdvance::Finished`), or defers a nested `<beans>`
+    /// child onto the stack (`BeansAdvance::Push`). Never called while a
+    /// push it issued hasn't yet been resolved — that case only ever
+    /// resumes via [`Self::deliver`].
+    fn step(&mut self, diagnostics: &mut Vec<Diagnostic>) -> BeansAdvance<'a> {
+        loop {
+            let Some(child) = self.children.get(self.idx) else {
+                return BeansAdvance::Finished;
+            };
+            self.idx += 1;
+            let XmlNode::Element(child_element) = child else {
+                // Top-level text (whitespace between elements, typically)
+                // has nothing to attach to at this level and is dropped,
+                // same as `events::build_tree`'s own out-of-element text
+                // handling — matches `parse_beans_body`'s former inline
+                // children loop exactly.
+                continue;
+            };
+            // Resolve this child's own qname *before* falling through to
+            // `dispatch_root_child` — the same "intercept the recursive arm
+            // ahead of the frozen match, resolve again once inside it"
+            // duplication `bean::BeanFrame::step` accepts for
+            // `"property"`/`"constructor-arg"` (see that function's own
+            // doc comment): `dispatch_root_child`'s own `"beans"` arm below
+            // is intentionally left in place, frozen structure, but this
+            // check is what actually keeps it from ever firing in practice.
+            let child_scope = NsScope::from_element(child_element, Some(&self.scope));
+            let qn = resolve_qname(&child_element.name, &child_scope);
+            if qn.1 == "beans" && is_beans_ns(&qn.0) {
+                // Same threading rule `parse_nested_beans` documented:
+                // `depth + 1` is this nested block's own depth, checked
+                // *before* recursing (never after) — same convention
+                // `inject_value::begin_resolve_value`'s own `Bean`/
+                // `Collection` arms follow ahead of every `Advance::Push`.
+                if self.depth + 1 >= crate::DEPTH_LIMIT {
+                    let nested_ctx = nesting_limit_exceeded_beans_ctx(child_element, diagnostics);
+                    push_nested_beans_file(&mut self.ctx, nested_ctx);
+                } else {
+                    let frame = BeansBodyFrame::new(&child_scope, child_element, self.depth + 1);
+                    return BeansAdvance::Push(Box::new(frame));
+                }
+                continue;
+            }
+            // Every other root-child shape is bounded, non-recursive work
+            // — reuse the frozen dispatch match unchanged.
+            dispatch_root_child(
+                &mut self.ctx,
+                diagnostics,
+                &self.scope,
+                child_element,
+                self.depth,
+            );
+        }
+    }
+
+    /// Resumes this frame once a nested `<beans>` child it pushed has
+    /// finished resolving — folds the result into `self.ctx.nested_profiles`
+    /// (same [`push_nested_beans_file`] helper [`parse_nested_beans`] itself
+    /// used to call) and hands control back to [`Self::step`] to continue
+    /// this block's own children loop.
+    fn deliver(&mut self, nested_ctx: Box<BeansFileCtx>) -> BeansAdvance<'a> {
+        push_nested_beans_file(&mut self.ctx, nested_ctx);
+        BeansAdvance::Continue
+    }
+
+    /// Consumes this finished frame into its assembled `Box<BeansFileCtx>`
+    /// — only ever called once `step`/`deliver` has returned
+    /// `BeansAdvance::Finished` for it.
+    fn finish(self) -> Box<BeansFileCtx> {
+        self.ctx
+    }
+}
+
+/// Drives `stack` to completion — see this section's own doc comment for the
+/// full step/descend/return framing, and [`crate::depth_engine::run`]'s own
+/// doc comment for the general pattern this mirrors. `stack` must start with
+/// exactly one frame (the call this whole engine run is standing in for);
+/// every further frame is pushed/popped internally as nested `<beans>`
+/// resolution demands.
+fn run_beans_body(
+    mut stack: Vec<BeansBodyFrame<'_>>,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Box<BeansFileCtx> {
+    debug_assert!(!stack.is_empty(), "engine started with no initial frame");
+    let mut incoming: Option<Box<BeansFileCtx>> = None;
+    loop {
+        let top = stack
+            .last_mut()
+            .expect("engine stack emptied while still running");
+        let advance = match incoming.take() {
+            Some(nested_ctx) => top.deliver(nested_ctx),
+            None => top.step(diagnostics),
+        };
+        match advance {
+            BeansAdvance::Push(frame) => stack.push(*frame),
+            BeansAdvance::Continue => {}
+            BeansAdvance::Finished => {
+                let frame = stack.pop().expect("the frame that just advanced");
+                let finished_ctx = frame.finish();
+                if stack.is_empty() {
+                    return finished_ctx;
+                }
+                incoming = Some(finished_ctx);
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------
@@ -449,11 +674,20 @@ fn dispatch_root_child(
         // unoptimized frame reserves stack for every local declared
         // anywhere in a function regardless of which `match` arm actually
         // ran — leaving this inline would bloat *every* call to
-        // `dispatch_root_child`, including the `"beans"` arm just below,
-        // which is the one actually on the `<beans>`-in-`<beans>` recursive
-        // chain `tests/i3_hostile_proptest.rs`'s `deep_profile` fixture
-        // stresses, for no benefit.
+        // `dispatch_root_child`, for no benefit.
         "bean" if is_beans_ns(&qn.0) => dispatch_bean_element(ctx, diagnostics, scope, child),
+        // I3 P0 stack-diet fallback: this arm is frozen structure (kept
+        // as-is, real recursive call and all) but never actually reached in
+        // practice any more — `BeansBodyFrame::step` (this section's own
+        // heap-worklist engine, defined above `dispatch_root_child`)
+        // intercepts a `"beans"` child *before* calling this function at
+        // all, the same "leaf arm kept as-is, no longer the live path"
+        // treatment `bean::dispatch_bean_child`'s own `"property"`/
+        // `"constructor-arg"` arms get from `bean::BeanFrame::step`. Still
+        // exercised directly by any (test or future) call site that reaches
+        // `dispatch_root_child`/`parse_nested_beans` without going through
+        // `BeansBodyFrame`, which is why it stays fully correct rather than
+        // `unreachable!()`.
         "beans" if is_beans_ns(&qn.0) => parse_nested_beans(ctx, diagnostics, scope, child, depth),
         "component-scan" if is_context_ns(&qn.0) => {
             parse_component_scan(ctx, diagnostics, scope, child)
@@ -964,6 +1198,16 @@ fn split_comma_list(text: &str, span: ByteSpan) -> Vec<Spanned<String>> {
 /// `<beans>`-in-`<beans>` hop. The [`crate::DEPTH_LIMIT`] check itself
 /// lives in `parse_beans_body` (see that function's own doc comment) —
 /// this stub only threads the counter, it never checks it directly.
+///
+/// I3 P0 stack-diet fallback: this function's own body is unchanged (real
+/// recursive call into `parse_beans_body` and all) but is no longer on the
+/// live `<beans>`-in-`<beans>` recursion path — `BeansBodyFrame::step`
+/// (defined above `dispatch_root_child`, this module's own heap-worklist
+/// engine) intercepts a `"beans"` child before `dispatch_root_child`'s own
+/// `"beans"` arm (the only caller of this function) is ever reached. Kept
+/// exactly as-is regardless, per the dispatch contract this whole match's
+/// own doc comment states — a leaf never touches `dispatch_root_child`'s
+/// match, and this fix isn't a leaf.
 pub(crate) fn parse_nested_beans(
     ctx: &mut BeansFileCtx,
     diagnostics: &mut Vec<Diagnostic>,
