@@ -11,4 +11,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other
 
-- beans-xml v0.1.0 — lenient parser for Spring Framework bean XML (<beans> schema)
+- beans-xml v0.1.0 — lenient parser for Spring Framework bean XML (`<beans>` schema)
